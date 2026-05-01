@@ -114,7 +114,7 @@ def test_scorecard_to_dict_matches_design_doc_shape():
                     MetricScore(
                         metric="median_fwhm_px",
                         value=3.26,
-                        percentile=70.0,
+                        rank_score=70.0,
                         higher_is_better=False,
                         raw_quantiles={"p50": 3.0},
                     )
@@ -125,7 +125,7 @@ def test_scorecard_to_dict_matches_design_doc_shape():
             MetricScore(
                 metric="median_fwhm_px",
                 value=3.26,
-                percentile=70.0,
+                rank_score=70.0,
                 higher_is_better=False,
                 raw_quantiles={"p50": 3.0},
             )

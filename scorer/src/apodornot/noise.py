@@ -46,6 +46,24 @@ class PSDShape:
 
 
 @dataclass
+class FixedPatternNoise:
+    """Row/column-aligned noise signature (amp glow, dark-current striping,
+    residual flat-field issues). Radial PSD and 2D autocorrelation miss this
+    because the pattern is anisotropic — energy only along one axis.
+
+    For each background patch we collapse to:
+      - column mean (length W) -> row-aligned pattern energy
+      - row mean (length H)    -> column-aligned pattern energy
+    Then PSD each. Excess low-frequency energy in either signature flags
+    fixed-pattern noise.
+    """
+    column_pattern_score: float  # 0..1, fraction of energy in the lowest 25% of frequencies
+    row_pattern_score: float
+    column_amplitude: float      # std-dev of the column-mean signal
+    row_amplitude: float
+
+
+@dataclass
 class NoiseResult:
     channels: list[ChannelNoiseStats]
     psd: PSDShape | None
@@ -54,6 +72,7 @@ class NoiseResult:
     snr_target_pct90: float
     n_background_patches: int
     snr_per_quadrant: dict[str, float] = field(default_factory=dict)  # tl/tr/bl/br medians
+    fixed_pattern: FixedPatternNoise | None = None
     raw: dict = field(default_factory=dict)
 
     def summary(self) -> dict:
@@ -69,6 +88,12 @@ class NoiseResult:
             "snr_target_median": self.snr_target,
             "snr_target_p90": self.snr_target_pct90,
             "snr_per_quadrant": self.snr_per_quadrant,
+            "fpn_row_pattern": self.fixed_pattern.row_pattern_score if self.fixed_pattern else None,
+            "fpn_column_pattern": self.fixed_pattern.column_pattern_score if self.fixed_pattern else None,
+            "fpn_max_pattern": (
+                max(self.fixed_pattern.row_pattern_score, self.fixed_pattern.column_pattern_score)
+                if self.fixed_pattern else None
+            ),
             "n_background_patches": self.n_background_patches,
         }
 
@@ -313,6 +338,54 @@ def estimate_target_snr(
     return float(np.median(snr)), float(np.percentile(snr, 90))
 
 
+def detect_fixed_pattern_noise(patches: list[np.ndarray]) -> FixedPatternNoise | None:
+    """Compute row-aligned and column-aligned noise pattern scores.
+
+    For each background patch:
+      - row_mean[i] = mean of pixels in row i; PSD on this 1D signal reveals
+        any column-aligned periodic structure (vertical stripes).
+      - col_mean[j] = mean of pixels in column j; PSD reveals row-aligned
+        structure (horizontal stripes / amp glow).
+
+    Score = fraction of total PSD energy in the lowest 25% of frequencies
+    (excluding DC). White noise → ~0.25 (uniform). Strong fixed pattern → ~0.6+.
+    """
+    if not patches:
+        return None
+    row_scores: list[float] = []
+    col_scores: list[float] = []
+    row_amps: list[float] = []
+    col_amps: list[float] = []
+
+    for patch in patches:
+        p = patch.astype(np.float64)
+        p = p - float(np.mean(p))
+        row_mean = p.mean(axis=1)  # avg over columns → length H
+        col_mean = p.mean(axis=0)  # avg over rows    → length W
+        row_amps.append(float(np.std(row_mean)))
+        col_amps.append(float(np.std(col_mean)))
+
+        for sig, score_list in [(row_mean, col_scores), (col_mean, row_scores)]:
+            f = np.fft.rfft(sig)
+            psd = np.abs(f) ** 2
+            if psd.size <= 1:
+                continue
+            psd = psd[1:]  # drop DC
+            if float(psd.sum()) <= 0:
+                continue
+            cutoff = max(1, int(len(psd) * 0.25))
+            score_list.append(float(psd[:cutoff].sum() / psd.sum()))
+
+    if not row_scores or not col_scores:
+        return None
+    return FixedPatternNoise(
+        column_pattern_score=float(np.mean(col_scores)),
+        row_pattern_score=float(np.mean(row_scores)),
+        column_amplitude=float(np.mean(col_amps)),
+        row_amplitude=float(np.mean(row_amps)),
+    )
+
+
 def estimate_quadrant_snr(
     bg_subtracted: np.ndarray, rms: np.ndarray, segmentation: np.ndarray
 ) -> dict[str, float]:
@@ -362,6 +435,7 @@ def characterize_noise(chars: ImageCharacterization, *, max_patches: int = 12) -
     ac_width = autocorrelation_width(patches)
     snr_med, snr_p90 = estimate_target_snr(chars.background_subtracted, chars.rms, chars.segmentation)
     snr_per_quadrant = estimate_quadrant_snr(chars.background_subtracted, chars.rms, chars.segmentation)
+    fixed_pattern = detect_fixed_pattern_noise(patches)
 
     log.info(
         "A3: %d bg patches, slope=%.2f, ac_width=%.2f px, SNR_median=%.2f",
@@ -379,6 +453,7 @@ def characterize_noise(chars: ImageCharacterization, *, max_patches: int = 12) -
         snr_target_pct90=snr_p90,
         n_background_patches=len(patches),
         snr_per_quadrant=snr_per_quadrant,
+        fixed_pattern=fixed_pattern,
     )
 
 

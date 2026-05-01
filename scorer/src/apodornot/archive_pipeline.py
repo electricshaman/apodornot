@@ -340,6 +340,7 @@ SCORING_METRICS: tuple[tuple[str, str, bool], ...] = (
     ("psd_high_band_suppression", "noise.psd_high_band_suppression",       False),
     ("autocorr_width_px",         "noise.autocorr_width_px",               False),
     ("snr_target_median",         "noise.snr_target_median",               True),
+    ("fpn_max_pattern",           "noise.fpn_max_pattern",                  False),
     # Target freq
     ("target_spectral_slope",     "target_freq.spectral_slope",            True),
     ("target_effective_resolution","target_freq.effective_resolution_cycles_per_px", True),
@@ -351,6 +352,7 @@ SCORING_METRICS: tuple[tuple[str, str, bool], ...] = (
     ("color_overall_score",       "color.overall_score",                   True),
     ("star_diversity_score",      "color.star_diversity_score",            True),
     ("background_chroma_distance","color.background_chroma_distance",      False),
+    ("chroma_concentration",      "color.chroma_concentration",            False),
 )
 
 

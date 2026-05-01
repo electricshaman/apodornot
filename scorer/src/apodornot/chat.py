@@ -114,24 +114,28 @@ in the TODO list, it must be anchored to a metric earlier in the response.
 
 # Score convention — read this carefully
 
-Every ``percentile`` field in the scorecard is **already direction-corrected so
-that 100 = best**, regardless of the metric's ``higher_is_better`` flag. A
-metric at percentile=70 ranks **better than 70% of the reference set**, period.
-Do **not** invert the interpretation for ``higher_is_better=false`` metrics.
-The pipeline has already done that arithmetic for you.
+Every metric in the scorecard has a ``rank_score`` field on a 0..100 scale
+where **100 = best**, regardless of the metric's ``higher_is_better`` flag.
+A metric at ``rank_score=70`` ranks **better than 70% of the reference set**,
+period. Do **not** invert the interpretation for ``higher_is_better=false``
+metrics. The pipeline has already done that arithmetic for you.
 
-  - ``median_fwhm_px`` (lower-is-better) at percentile=70 → the user's stars
+(The legacy field name ``percentile`` is still emitted as an alias for
+``rank_score``; both carry the same direction-corrected value. Treat them
+as identical and prefer ``rank_score`` in your prose.)
+
+  - ``median_fwhm_px`` (lower-is-better) at rank_score=70 → the user's stars
     are sharper than 70% of the reference set. Good.
-  - ``gradient_ratio`` (lower-is-better) at percentile=20 → the user's gradient
+  - ``gradient_ratio`` (lower-is-better) at rank_score=20 → the user's gradient
     is worse than 80% of the reference set. Bad.
-  - ``snr_target_median`` (higher-is-better) at percentile=90 → the user's SNR
+  - ``snr_target_median`` (higher-is-better) at rank_score=90 → the user's SNR
     is higher than 90% of the reference set. Good.
 
 The same convention applies to the ``score`` field on each axis (0–100, where
 100 = best) and the top-level ``overall_score``.
 
 ``higher_is_better`` is preserved in the JSON only so you can describe which
-direction the *raw value* moves to improve — never to re-invert the percentile.
+direction the *raw value* moves to improve — never to re-invert the rank_score.
 
 # Tone
 
@@ -227,6 +231,16 @@ def _system_prompt(
     )
 
     if equipment_context and equipment_context.strip():
+        # Best-effort structured extraction via Haiku. Cached, so repeat chats
+        # on the same submission don't re-call Anthropic. Falls back gracefully
+        # to raw text if extraction fails / no API key / etc.
+        from .acquisition import extract as extract_acquisition, format_for_prompt
+        try:
+            structured = extract_acquisition(equipment_context)
+        except Exception:  # noqa: BLE001
+            structured = None
+        structured_block = format_for_prompt(structured)
+
         equip_block = (
             "\n\n# Equipment context (provided by the user)\n\n"
             "Use this to reason about whether a metric reading is plausible "
@@ -234,8 +248,16 @@ def _system_prompt(
             "mount won't have meaningful vignetting or tracking error). Trust "
             "the equipment over the metric when they conflict and the metric is "
             "known to be biased for the target type.\n\n"
+            "## Raw user notes\n\n"
             f"```\n{equipment_context.strip()}\n```"
         )
+        if structured_block:
+            equip_block += (
+                "\n\n## Structured extraction\n\n"
+                "Pre-parsed acquisition data (Haiku, may be incomplete; "
+                "verify against the raw notes if anything looks off):\n\n"
+                f"```json\n{structured_block}\n```"
+            )
         base = base + equip_block
 
     return base

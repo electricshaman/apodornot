@@ -52,6 +52,7 @@ COMPOSITE_AXES: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = (
             ("psd_high_band_suppression", 1.0),
             ("autocorr_width_px", 1.0),
             ("snr_target_median", 0.5),
+            ("fpn_max_pattern", 0.75),
         ),
     ),
     (
@@ -76,6 +77,7 @@ COMPOSITE_AXES: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = (
             ("star_diversity_score", 1.0),
             ("background_chroma_distance", 0.5),
             ("color_balance_magnitude", 0.5),
+            ("chroma_concentration", 0.5),
         ),
     ),
 )
@@ -199,6 +201,24 @@ def _diag_nr(pct: float, value: float, ctx: dict) -> str | None:
     return None
 
 
+@_diag("fpn_max_pattern")
+def _diag_fpn(pct: float, value: float, ctx: dict) -> str | None:
+    """Excess low-frequency energy in column-mean or row-mean PSD = fixed
+    pattern noise (amp glow, vertical/horizontal striping, residual flat-field)."""
+    if pct < 50 and value > 0.4:
+        return _md(
+            f"Fixed-pattern noise — {pct:.0f}th percentile",
+            f"The background carries a row- or column-aligned pattern (low-frequency "
+            f"energy fraction {value:.2f}) that's invisible to radial PSD or 2D "
+            "autocorrelation but visible as horizontal stripes, vertical bars, or "
+            "residual amp glow in the dark sky. Likely culprits: "
+            "missing/wrong dark frames, missing/wrong bias frames, sensor amp glow "
+            "near a corner, or fixed-pattern residue from a flat that doesn't match the lights. "
+            "Recapture darks at the current exposure/temperature and re-run calibration.",
+        )
+    return None
+
+
 @_diag("autocorr_width_px")
 def _diag_ac(pct: float, value: float, ctx: dict) -> str | None:
     if pct < 50 and value > 2.0:
@@ -276,6 +296,25 @@ def _diag_star_div(pct: float, value: float, ctx: dict) -> str | None:
     return None
 
 
+@_diag("chroma_concentration")
+def _diag_chroma_conc(pct: float, value: float, ctx: dict) -> str | None:
+    """High chroma concentration = single hue dominates target chromaticity.
+    Common for narrowband images where one channel pair eats the palette
+    (e.g. magenta-everywhere SII+Ha vs OIII separation)."""
+    if pct < 50 and value > 0.4:
+        return _md(
+            f"Chroma concentration — {pct:.0f}th percentile",
+            f"**{value * 100:.0f}%** of target-pixel chromaticity falls in a single hue cluster. "
+            "The palette has collapsed toward one color (commonly magenta dominance from "
+            "Ha+SII running together, or teal from OIII+Ha overlap). The fix is in the "
+            "narrowband-channel composition step: rebalance the SII/Ha/OIII contribution "
+            "weights to spread the palette across more of the chromaticity plane, or apply "
+            "selective hue rotation through PixInsight CurvesTransformation in CIE-Lab on the "
+            "a/b channels.",
+        )
+    return None
+
+
 @_diag("background_chroma_distance")
 def _diag_bgchroma(pct: float, value: float, ctx: dict) -> str | None:
     if pct < 50 and value > 0.04:
@@ -297,12 +336,22 @@ def _diag_bgchroma(pct: float, value: float, ctx: dict) -> str | None:
 class MetricScore:
     metric: str
     value: float | None
-    percentile: float            # 0..100, higher = better (already direction-corrected)
+    # The metric's direction-corrected score on a 0..100 scale where 100 = best,
+    # regardless of higher_is_better. Despite its history, this is **not** a
+    # statistical percentile rank — see f1i / docs/design.md for the rename to
+    # ``rank_score``. The ``percentile`` property below is a deprecated alias.
+    rank_score: float
     higher_is_better: bool
     raw_quantiles: dict[str, float] = field(default_factory=dict)
     label: str = ""              # human-readable display name (e.g. "Median FWHM")
     unit: str = ""               # display unit (e.g. "px", "cy/px")
     format: str = "auto"         # number formatting hint: decimal | scientific | px | auto
+
+    @property
+    def percentile(self) -> float:
+        """Deprecated alias for ``rank_score``. Will be removed after the
+        React UI is ported to LiveView (apodornot-f1i)."""
+        return self.rank_score
 
 
 @dataclass
@@ -435,7 +484,7 @@ def score_metrics(
                 MetricScore(
                     metric=metric_name,
                     value=v,
-                    percentile=float("nan"),
+                    rank_score=float("nan"),
                     higher_is_better=_hib,
                     raw_quantiles={},
                     label=disp["label"],
@@ -449,7 +498,7 @@ def score_metrics(
                 MetricScore(
                     metric=metric_name,
                     value=None,
-                    percentile=float("nan"),
+                    rank_score=float("nan"),
                     higher_is_better=ref.higher_is_better,
                     raw_quantiles=ref.quantiles,
                     label=disp["label"],
@@ -463,7 +512,7 @@ def score_metrics(
             MetricScore(
                 metric=metric_name,
                 value=float(v),
-                percentile=float(pct),
+                rank_score=float(pct),
                 higher_is_better=ref.higher_is_better,
                 raw_quantiles=ref.quantiles,
                 label=disp["label"],

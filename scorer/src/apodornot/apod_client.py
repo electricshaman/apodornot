@@ -123,8 +123,13 @@ class ApodClient:
         return [ApodEntry.from_response(item) for item in payload]
 
     def download_image(self, url: str, dest: Path) -> int:
-        """Stream an image to disk. Returns bytes written."""
-        self._respect_rate_limit()
+        """Stream an image to disk. Returns bytes written.
+
+        Image downloads go to apod.nasa.gov (the public CDN) rather than
+        api.nasa.gov, so they do **not** count against the API rate limit
+        and do not need ``_respect_rate_limit``-style throttling. Skipping
+        the throttle here drops the per-image overhead from ~0.6s to ~0.
+        """
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_suffix(dest.suffix + ".part")
         bytes_written = 0
@@ -136,7 +141,6 @@ class ApodClient:
                         f.write(chunk)
                         bytes_written += len(chunk)
         tmp.replace(dest)
-        self._last_request_at = time.monotonic()
         return bytes_written
 
     # ---- internals ------------------------------------------------------- #
@@ -364,17 +368,26 @@ def fetch_range(
             log.info("Incremental: resuming from %s (latest archived = %s)", new_start, latest)
             start_d = new_start
 
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     written = 0
     for chunk_start, chunk_end in _date_chunks(start_d, end_d, chunk_days=30):
         log.info("Fetching APOD %s..%s", chunk_start, chunk_end)
         entries = client.get_range(chunk_start, chunk_end)
-        for entry in entries:
+
+        # Image downloads go to apod.nasa.gov (CDN) and don't share API limits;
+        # parallelize them so a 30-image chunk takes ~one-image's-time, not 30x.
+        def _safe_ingest(entry):
             try:
-                if _ingest_entry(client, entry, root, skip_videos=skip_videos):
-                    written += 1
-            except Exception as exc:
+                return _ingest_entry(client, entry, root, skip_videos=skip_videos)
+            except Exception as exc:  # noqa: BLE001
                 log.error("Failed to ingest %s (%s): %s", entry.date, entry.title, exc)
-                continue
+                return False
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for did_write in pool.map(_safe_ingest, entries):
+                if did_write:
+                    written += 1
     return written
 
 

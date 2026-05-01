@@ -160,15 +160,33 @@ def _load_fits(path: Path) -> tuple[np.ndarray, dict[str, Any]]:
 
 
 def _load_raster(path: Path) -> np.ndarray:
-    """Load TIFF/PNG/JPEG via skimage, falling back to PIL."""
+    """Load TIFF/PNG/JPEG/GIF via skimage, falling back to PIL.
+
+    Animated GIFs (which a handful of pre-2000 APOD entries use) load as a
+    multi-frame array of shape (n_frames, H, W[, 3]); take the first frame so
+    downstream shape-unpacking works.
+    """
     try:
         from skimage import io as skio
 
-        return skio.imread(path)
+        arr = skio.imread(path)
     except Exception:
         from PIL import Image
 
-        return np.array(Image.open(path))
+        # PIL animated GIF iteration: pick frame 0.
+        with Image.open(path) as img:
+            img.seek(0)
+            arr = np.array(img.convert("RGB"))
+
+    # Multi-frame GIFs come back as (n_frames, H, W) or (n_frames, H, W, 3).
+    # Collapse to a single frame so the rest of the pipeline sees its expected
+    # 2D / 3D shape.
+    if arr.ndim == 4:
+        arr = arr[0]
+    elif arr.ndim == 3 and arr.shape[-1] not in (1, 3, 4):
+        # Heuristic: if the last axis isn't a channel count, it's a frame axis.
+        arr = arr[0]
+    return arr
 
 
 def load_and_normalize(path: str | Path) -> tuple[np.ndarray, np.ndarray | None, ImageMetadata]:

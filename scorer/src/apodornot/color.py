@@ -44,6 +44,7 @@ class TargetColorDistribution:
     palette_confidence: float       # 0..1
     target_color_means: dict[str, float]
     target_color_stds: dict[str, float]
+    chroma_concentration: float = 0.0  # 0..1; high = single hue dominates target chromaticity
 
 
 @dataclass
@@ -59,6 +60,7 @@ class ColorResult:
             "background_chroma_distance": self.background.chroma_distance if self.background else None,
             "target_palette": self.target_distribution.palette if self.target_distribution else None,
             "palette_confidence": self.target_distribution.palette_confidence if self.target_distribution else None,
+            "chroma_concentration": self.target_distribution.chroma_concentration if self.target_distribution else None,
             "overall_score": self.overall_score,
         }
 
@@ -224,12 +226,58 @@ def detect_palette(
         # Confidence higher when channels are well-balanced and decorrelated.
         confidence = float(0.5 + 0.5 * (1 - abs(r - 1 / 3) - abs(g - 1 / 3) - abs(b - 1 / 3)))
 
+    # Chromaticity concentration — measures how much the target's chromaticity
+    # piles up in a single hue cluster vs spreading across the primaries.
+    # The "magenta cast across bright filaments" pattern shows up as ~70% of
+    # target pixels falling in a single hue bucket.
+    chroma_conc = _chroma_concentration(color, target_mask, sample_r, sample_g, sample_b)
+
     return TargetColorDistribution(
         palette=palette,
         palette_confidence=float(np.clip(confidence, 0.0, 1.0)),
         target_color_means=means,
         target_color_stds=stds,
+        chroma_concentration=chroma_conc,
     )
+
+
+def _chroma_concentration(
+    color: np.ndarray,
+    target_mask: np.ndarray,
+    sample_r: np.ndarray,
+    sample_g: np.ndarray,
+    sample_b: np.ndarray,
+) -> float:
+    """Compute hue-histogram concentration over target pixels.
+
+    Build a 12-bin hue histogram (excluding near-neutral pixels) and return
+    the fraction of pixels in the single dominant bin. Uniform RGB nebulae
+    spread across multiple hue bins (low concentration); narrowband palettes
+    that collapse to a single hue cluster (e.g. magenta-everywhere or
+    teal-everywhere) score high.
+    """
+    if sample_r.size == 0:
+        return 0.0
+    rgb = np.stack([sample_r, sample_g, sample_b], axis=1).astype(np.float64)
+    total = rgb.sum(axis=1)
+    valid = total > 1e-6
+    if not np.any(valid):
+        return 0.0
+    rgb = rgb[valid] / total[valid, None]
+
+    # Drop near-neutral pixels (low chroma) — they aren't part of the palette.
+    neutral_dist = np.hypot(rgb[:, 0] - 1 / 3, rgb[:, 1] - 1 / 3)
+    chromatic = rgb[neutral_dist > 0.04]
+    if chromatic.shape[0] < 50:
+        return 0.0
+
+    # Hue from chromaticity (r, g) using atan2 in the (r-1/3, g-1/3) plane.
+    rx = chromatic[:, 0] - 1 / 3
+    gx = chromatic[:, 1] - 1 / 3
+    hues = np.arctan2(gx, rx)  # [-pi, pi]
+    bins = np.linspace(-np.pi, np.pi, 13)  # 12 hue bins
+    counts, _ = np.histogram(hues, bins=bins)
+    return float(counts.max() / counts.sum())
 
 
 # ---------------------------------------------------------------------------- #

@@ -30,6 +30,7 @@ METRIC_DISPLAY: dict[str, MetricDisplay] = {
     "psd_high_band_suppression": {"label": "HF suppression",     "unit": "",       "format": "decimal"},
     "autocorr_width_px":         {"label": "Noise autocorr",     "unit": "px",     "format": "decimal"},
     "snr_target_median":         {"label": "Median SNR",         "unit": "",       "format": "decimal"},
+    "fpn_max_pattern":           {"label": "Fixed-pattern noise","unit": "",       "format": "decimal"},
 
     # Target frequency
     "target_spectral_slope":     {"label": "Detail slope",       "unit": "",       "format": "decimal"},
@@ -44,6 +45,7 @@ METRIC_DISPLAY: dict[str, MetricDisplay] = {
     "color_overall_score":       {"label": "Color overall",      "unit": "",       "format": "decimal"},
     "star_diversity_score":      {"label": "Stellar chroma",     "unit": "",       "format": "decimal"},
     "background_chroma_distance":{"label": "Background chroma",  "unit": "",       "format": "decimal"},
+    "chroma_concentration":      {"label": "Chroma concentration","unit": "",      "format": "decimal"},
 }
 
 

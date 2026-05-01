@@ -70,7 +70,8 @@ def _scorecard_to_dict(scorecard) -> dict[str, Any]:
                 "axis": ax.axis,
                 "score": ax.score,
                 "components": [
-                    {"metric": c.metric, "value": c.value, "percentile": c.percentile}
+                    {"metric": c.metric, "value": c.value,
+                     "rank_score": c.rank_score, "percentile": c.rank_score}
                     for c in ax.components
                 ],
             }
@@ -80,7 +81,8 @@ def _scorecard_to_dict(scorecard) -> dict[str, Any]:
             {
                 "metric": m.metric,
                 "value": m.value,
-                "percentile": m.percentile,
+                "rank_score": m.rank_score,
+                "percentile": m.rank_score,  # deprecated alias — see f1i
                 "higher_is_better": m.higher_is_better,
                 "quantiles": m.raw_quantiles,
             }
