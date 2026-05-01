@@ -22,6 +22,7 @@ METRIC_DISPLAY: dict[str, MetricDisplay] = {
     "median_fwhm_px":            {"label": "Median FWHM",        "unit": "px",     "format": "decimal"},
     "median_eccentricity":       {"label": "Median eccentricity","unit": "",       "format": "decimal"},
     "fwhm_corner_excess":        {"label": "Corner FWHM excess", "unit": "",       "format": "decimal"},
+    "fwhm_quadrant_asymmetry":   {"label": "FWHM quadrant asymmetry", "unit": "", "format": "decimal"},
 
     # Noise
     "noise_floor_l":             {"label": "Background σ",       "unit": "",       "format": "scientific"},

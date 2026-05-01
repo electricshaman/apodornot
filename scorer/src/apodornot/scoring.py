@@ -42,6 +42,7 @@ COMPOSITE_AXES: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = (
             ("median_fwhm_px", 1.0),
             ("median_eccentricity", 1.0),
             ("fwhm_corner_excess", 0.5),
+            ("fwhm_quadrant_asymmetry", 0.5),
         ),
     ),
     (
@@ -152,6 +153,36 @@ def _diag_corner(pct: float, value: float, ctx: dict) -> str | None:
             "tilt, or coma. Image circle may be too small for the sensor; a coma corrector "
             "or flattener should help.",
         )
+    return None
+
+
+@_diag("fwhm_quadrant_asymmetry")
+def _diag_quadrant_asymmetry(pct: float, value: float, ctx: dict) -> str | None:
+    """Asymmetric corner-to-corner FWHM is a tilt fingerprint that the radial
+    corner-excess metric misses (a tilted sensor has one corner much worse than
+    the diagonally opposite one)."""
+    quadrants = ctx.get("quadrants") or {}
+    if pct < 50 and value > 0.15 and quadrants:
+        # Find worst quadrant for the diagnostic text.
+        finite = [(k, q.get("median_fwhm_px"))
+                  for k, q in quadrants.items()
+                  if isinstance(q, dict) and isinstance(q.get("median_fwhm_px"), (int, float))]
+        if finite:
+            worst_label, worst_fwhm = max(finite, key=lambda kv: kv[1])
+            best_label, best_fwhm = min(finite, key=lambda kv: kv[1])
+            quadrant_name = {
+                "tl": "top-left", "tr": "top-right",
+                "bl": "bottom-left", "br": "bottom-right",
+            }
+            return _md(
+                f"FWHM quadrant asymmetry — {pct:.0f}th percentile",
+                f"Star sharpness varies **{value * 100:.0f}%** across the frame, with the "
+                f"{quadrant_name.get(worst_label, worst_label)} quadrant ({worst_fwhm:.2f} px) "
+                f"noticeably worse than {quadrant_name.get(best_label, best_label)} "
+                f"({best_fwhm:.2f} px). That asymmetry across the diagonal is a sensor-tilt "
+                "fingerprint — uniform field curvature would degrade all four corners equally. "
+                "Worth a tilt-plate adjustment before the next session.",
+            )
     return None
 
 
@@ -495,12 +526,12 @@ def render_radar_chart(scorecard: ScoreCard, out_path: str | Path) -> Path:
 def generate_diagnostics(
     metric_scores: list[MetricScore], evaluation: EvaluationResult
 ) -> list[str]:
+    fv = evaluation.star_field.field_variation
+    sf_summary = evaluation.star_field.summary()
     ctx = {
-        "eccentricity_pattern": (
-            evaluation.star_field.field_variation.eccentricity_pattern
-            if evaluation.star_field.field_variation
-            else "unknown"
-        ),
+        "eccentricity_pattern": fv.eccentricity_pattern if fv else "unknown",
+        "quadrants": sf_summary.get("quadrants") or {},
+        "snr_per_quadrant": evaluation.noise.snr_per_quadrant if evaluation.noise else {},
     }
     findings: list[str] = []
     for ms in metric_scores:

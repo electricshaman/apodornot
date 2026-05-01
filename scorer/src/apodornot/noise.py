@@ -53,6 +53,7 @@ class NoiseResult:
     snr_target: float
     snr_target_pct90: float
     n_background_patches: int
+    snr_per_quadrant: dict[str, float] = field(default_factory=dict)  # tl/tr/bl/br medians
     raw: dict = field(default_factory=dict)
 
     def summary(self) -> dict:
@@ -67,6 +68,7 @@ class NoiseResult:
             "autocorr_width_px": self.autocorr_width_px,
             "snr_target_median": self.snr_target,
             "snr_target_p90": self.snr_target_pct90,
+            "snr_per_quadrant": self.snr_per_quadrant,
             "n_background_patches": self.n_background_patches,
         }
 
@@ -311,6 +313,37 @@ def estimate_target_snr(
     return float(np.median(snr)), float(np.percentile(snr, 90))
 
 
+def estimate_quadrant_snr(
+    bg_subtracted: np.ndarray, rms: np.ndarray, segmentation: np.ndarray
+) -> dict[str, float]:
+    """Median target SNR per quadrant (tl/tr/bl/br). NaN if no target pixels in a quadrant.
+
+    Reveals uneven SNR — a smaller, brighter target offset toward one corner,
+    asymmetric calibration, or a per-quadrant amp-glow residual all show up as
+    a >2x asymmetry across quadrants.
+    """
+    h, w = bg_subtracted.shape
+    cy, cx = h // 2, w // 2
+    target = segmentation == SEG_TARGET
+
+    out: dict[str, float] = {}
+    for label, ys, xs in [
+        ("tl", slice(0, cy), slice(0, cx)),
+        ("tr", slice(0, cy), slice(cx, w)),
+        ("bl", slice(cy, h), slice(0, cx)),
+        ("br", slice(cy, h), slice(cx, w)),
+    ]:
+        sub_target = target[ys, xs]
+        if not np.any(sub_target):
+            out[label] = float("nan")
+            continue
+        sig = bg_subtracted[ys, xs][sub_target]
+        n = rms[ys, xs][sub_target]
+        n = np.where(n > 0, n, 1e-9)
+        out[label] = float(np.median(sig / n))
+    return out
+
+
 # ---------------------------------------------------------------------------- #
 # Top-level A3 pipeline
 # ---------------------------------------------------------------------------- #
@@ -328,6 +361,7 @@ def characterize_noise(chars: ImageCharacterization, *, max_patches: int = 12) -
     psd = compute_psd_shape(patches)
     ac_width = autocorrelation_width(patches)
     snr_med, snr_p90 = estimate_target_snr(chars.background_subtracted, chars.rms, chars.segmentation)
+    snr_per_quadrant = estimate_quadrant_snr(chars.background_subtracted, chars.rms, chars.segmentation)
 
     log.info(
         "A3: %d bg patches, slope=%.2f, ac_width=%.2f px, SNR_median=%.2f",
@@ -344,6 +378,7 @@ def characterize_noise(chars: ImageCharacterization, *, max_patches: int = 12) -
         snr_target=snr_med,
         snr_target_pct90=snr_p90,
         n_background_patches=len(patches),
+        snr_per_quadrant=snr_per_quadrant,
     )
 
 

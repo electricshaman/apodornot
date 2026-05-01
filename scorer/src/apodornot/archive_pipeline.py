@@ -333,6 +333,7 @@ SCORING_METRICS: tuple[tuple[str, str, bool], ...] = (
     ("median_fwhm_px",            "star_field.median_fwhm_px",            False),
     ("median_eccentricity",       "star_field.median_eccentricity",       False),
     ("fwhm_corner_excess",        "star_field.fwhm_corner_excess",        False),
+    ("fwhm_quadrant_asymmetry",   "star_field.fwhm_quadrant_asymmetry",   False),
     # Noise
     ("noise_floor_l",             "noise.noise_floors.L",                  False),
     ("psd_spectral_slope",        "noise.psd_spectral_slope",              True),  # less negative = better

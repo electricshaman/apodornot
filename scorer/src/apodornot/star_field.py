@@ -44,6 +44,15 @@ class StarMeasurement:
 
 
 @dataclass
+class QuadrantStats:
+    """Per-quadrant aggregates. Quadrants are labeled tl/tr/bl/br, split at
+    the image center (origin top-left)."""
+    n: int
+    median_fwhm: float
+    median_eccentricity: float
+
+
+@dataclass
 class FieldVariation:
     median_fwhm: float
     fwhm_std: float
@@ -53,6 +62,11 @@ class FieldVariation:
     pa_concentration: float          # mean resultant length R of position angles in [0,1]
     radial_alignment_score: float    # how well PA tracks radial direction (0-1)
     n_stars_used: int
+    # Per-quadrant breakdown — exposes tilt direction + asymmetric coma to
+    # the deterministic side. tl=top-left, tr=top-right, bl=bottom-left,
+    # br=bottom-right (origin top-left).
+    quadrants: dict = field(default_factory=dict)
+    fwhm_quadrant_asymmetry: float = 0.0  # max - min of per-quadrant median FWHM, fraction
 
 
 @dataclass
@@ -63,6 +77,16 @@ class StarFieldResult:
 
     def summary(self) -> dict:
         fv = self.field_variation
+        quadrants = None
+        if fv and fv.quadrants:
+            quadrants = {
+                label: {
+                    "n": q.n,
+                    "median_fwhm_px": q.median_fwhm,
+                    "median_eccentricity": q.median_eccentricity,
+                }
+                for label, q in fv.quadrants.items()
+            }
         return {
             "n_stars": len(self.measurements),
             "median_fwhm_px": fv.median_fwhm if fv else None,
@@ -72,6 +96,8 @@ class StarFieldResult:
             "eccentricity_pattern": fv.eccentricity_pattern if fv else None,
             "pa_concentration": fv.pa_concentration if fv else None,
             "radial_alignment_score": fv.radial_alignment_score if fv else None,
+            "fwhm_quadrant_asymmetry": fv.fwhm_quadrant_asymmetry if fv else None,
+            "quadrants": quadrants,
             "n_star_colors": len(self.star_colors),
         }
 
@@ -376,6 +402,27 @@ def analyze_field_variation(
 
     pattern, R, radial = _classify_eccentricity_pattern(measurements, image_shape)
 
+    # Per-quadrant breakdown.
+    quadrants: dict[str, QuadrantStats] = {}
+    quadrant_buckets: dict[str, list[StarMeasurement]] = {"tl": [], "tr": [], "bl": [], "br": []}
+    for m in measurements:
+        q = _quadrant_for(m.x, m.y, w, h)
+        quadrant_buckets[q].append(m)
+    for label, bucket in quadrant_buckets.items():
+        if bucket:
+            quadrants[label] = QuadrantStats(
+                n=len(bucket),
+                median_fwhm=float(np.median([m.fwhm for m in bucket])),
+                median_eccentricity=float(np.median([m.eccentricity for m in bucket])),
+            )
+        else:
+            quadrants[label] = QuadrantStats(n=0, median_fwhm=float("nan"), median_eccentricity=float("nan"))
+    quad_fwhms = [q.median_fwhm for q in quadrants.values() if q.n > 0 and math.isfinite(q.median_fwhm)]
+    if len(quad_fwhms) >= 2 and median_fwhm > 0:
+        asymmetry = float((max(quad_fwhms) - min(quad_fwhms)) / median_fwhm)
+    else:
+        asymmetry = 0.0
+
     return FieldVariation(
         median_fwhm=median_fwhm,
         fwhm_std=fwhm_std,
@@ -385,7 +432,17 @@ def analyze_field_variation(
         pa_concentration=R,
         radial_alignment_score=radial,
         n_stars_used=len(measurements),
+        quadrants=quadrants,
+        fwhm_quadrant_asymmetry=asymmetry,
     )
+
+
+def _quadrant_for(x: float, y: float, w: int, h: int) -> str:
+    """Top-left origin: 'tl' = top-left, 'tr' = top-right, etc."""
+    cx, cy = w / 2, h / 2
+    if y < cy:
+        return "tl" if x < cx else "tr"
+    return "bl" if x < cx else "br"
 
 
 # ---------------------------------------------------------------------------- #
