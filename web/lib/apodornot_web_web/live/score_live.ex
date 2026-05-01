@@ -402,7 +402,7 @@ defmodule ApodornotWebWeb.ScoreLive do
             <span class="font-sans text-[11px] text-slate-500 truncate">
               {(c["label"] && c["label"] != "" && c["label"]) || format_metric_label(c["metric"])}
             </span>
-            <span class="text-slate-500 shrink-0">p{format_score(c["percentile"])}</span>
+            <span class="text-slate-500 shrink-0">p{format_score(c["rank_score"] || c["percentile"])}</span>
           </div>
           <span class="text-slate-200 truncate">{format_value_with_unit(c["value"], c["unit"], c["format"])}</span>
         </div>
@@ -543,7 +543,7 @@ defmodule ApodornotWebWeb.ScoreLive do
                 metric={c["metric"]}
                 label={c["label"] || c["metric"]}
                 value={c["value"]}
-                percentile={c["percentile"]}
+                percentile={c["rank_score"] || c["percentile"]}
                 higher_is_better={c["higher_is_better"]}
                 quantiles={m["quantiles"] || %{}}
               />

@@ -147,10 +147,10 @@
   },
 
   "percentile": {
-    "label": "Percentile",
-    "beginner": "Your rank out of 100 compared to other images. 70 means you're better than 70 out of 100.",
-    "intermediate": "Where your value falls in the distribution of reference images. Direction-corrected here, so 100 = best regardless of metric.",
-    "advanced": "Direction-corrected percentile rank against the chosen APOD reference set. Always 100 = best (the pipeline inverts for lower-is-better metrics like FWHM and gradient_ratio)."
+    "label": "Rank score (percentile)",
+    "beginner": "Your rank out of 100 compared to other images. 70 means you're better than 70 out of 100. Always 100 = best, regardless of which way the underlying metric goes.",
+    "intermediate": "A direction-corrected score on a 0–100 scale where 100 = best, derived from your value's position in the reference distribution. The pipeline flips it for lower-is-better metrics (FWHM, gradient ratio) so the interpretation stays consistent everywhere.",
+    "advanced": "Internally `rank_score` (the JSON also exposes a deprecated `percentile` alias). Computed as raw_rank for higher_is_better metrics and (100 − raw_rank) for lower_is_better. Note this is NOT a statistical percentile rank — the name 'percentile' is preserved for backwards compatibility but `rank_score` is the truthful field."
   },
   "p10": {
     "label": "p10 / 10th percentile",
@@ -171,6 +171,12 @@
     "advanced": "90th percentile of the reference distribution. Upper whisker on quantile plots; the high-tail benchmark."
   },
 
+  "fixed_pattern_noise": {
+    "label": "Fixed-pattern noise",
+    "beginner": "Stripes, bars, or fixed glow patterns that show up in the dark sky regardless of the actual scene — usually means your dark or bias calibration frames don't match the lights.",
+    "intermediate": "Anisotropic noise aligned with rows or columns of the sensor — amp glow, vertical bars, horizontal stripes. The radial PSD and 2D autocorrelation can't see it because the energy is along a single axis. Detected by collapsing background patches to row-mean and column-mean, then PSD on those 1D signals.",
+    "advanced": "Score = fraction of total PSD energy in the lowest 25% of frequencies of column-mean and row-mean signals over background-mask patches (max of the two). White noise → ~0.25; strong fixed pattern → ~0.6+. Catches amp glow, dark-current striping, residual flat-field structure that other noise metrics miss."
+  },
   "fwhm_quadrant_asymmetry": {
     "label": "FWHM quadrant asymmetry",
     "beginner": "Whether one corner of your image is sharper than the opposite corner. If the upper-left is sharp but the lower-right is fat, your camera is probably tilted.",
@@ -212,6 +218,12 @@
     "beginner": "How much color variety your stars have — blue, white, yellow, orange — vs all looking the same.",
     "intermediate": "The spread of star colors across the detected population. Healthy images show the full stellar color sequence; over-processed ones collapse everyone to gray.",
     "advanced": "Mean inter-quartile range of normalized R/G/B ratios across detected stars. Mapped to a 0–1 score; low values flag color information destroyed by saturation, NR-on-chroma, or aggressive white balance."
+  },
+  "chroma_concentration": {
+    "label": "Chroma concentration",
+    "beginner": "Whether your colors all bunch up into one hue (e.g. everything magenta) or spread across the full color range. Low = healthy spread; high = palette collapse.",
+    "intermediate": "Fraction of target pixels whose chromaticity falls in a single hue bin. Catches narrowband palette imbalance — e.g. SII+Ha running together as 'magenta everywhere' instead of separating from OIII.",
+    "advanced": "12-bin hue histogram on (r, g) chromaticity coordinates of target pixels (after dropping near-neutral pixels via chroma_distance threshold). Returns max(bin) / sum(bins). White-balanced broadband nebulae spread across 4-6 bins (concentration ≈ 0.2-0.3); palette-collapsed narrowband images peak at 0.6+. Independent of overall background chromaticity (which `background_chroma_distance` covers)."
   },
   "background_chroma": {
     "label": "Background chroma distance",

@@ -35,6 +35,7 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
     "psd_high_band_suppression" => "hf_suppression",
     "autocorr_width_px" => "autocorrelation",
     "snr_target_median" => "snr",
+    "fpn_max_pattern" => "fixed_pattern_noise",
     "target_spectral_slope" => "detail_slope",
     "target_effective_resolution" => "mtf50",
     "gradient_ratio" => "gradient_ratio",
@@ -42,7 +43,8 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
     "color_balance_magnitude" => "channel_balance",
     "color_overall_score" => "axis.color_calibration",
     "star_diversity_score" => "stellar_chroma",
-    "background_chroma_distance" => "background_chroma"
+    "background_chroma_distance" => "background_chroma",
+    "chroma_concentration" => "chroma_concentration"
   }
 
   # ------------------------------------------------------------------------ #
