@@ -520,7 +520,7 @@ defmodule ApodornotWebWeb.ScoreLive do
           <% end %>
 
           <div :if={@messages == [] and not @streaming} class="text-slate-500 italic">
-            Ask anything about your scorecard. Claude has the image, the metrics, and the equipment context.
+            Ask anything about your scorecard. The reviewer has the image, the metrics, and your equipment context.
           </div>
 
           <div :if={@streaming} class="prose-chat">
@@ -530,7 +530,7 @@ defmodule ApodornotWebWeb.ScoreLive do
             <div :for={t <- @tool_uses} class="font-mono text-[10px] uppercase tracking-widest text-sky-400/70 mt-2">
               ↳ checking {t["name"]}
             </div>
-            <div :if={@active_text == "" and @tool_uses == []} class="text-slate-500 italic">claude is thinking…</div>
+            <div :if={@active_text == "" and @tool_uses == []} class="text-slate-500 italic">thinking…</div>
           </div>
         </div>
 
@@ -555,7 +555,7 @@ defmodule ApodornotWebWeb.ScoreLive do
               class="fixed left-0 top-0 bottom-0 w-12 bg-slate-900 border-r border-slate-800 z-30 flex items-center justify-center text-slate-500 hover:text-slate-100 hover:bg-slate-800 transition-colors"
               title="Open chat">
         <span class="font-mono text-[10px] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
-          ▸ ask claude
+          ▸ review chat
         </span>
       </button>
     <% end %>

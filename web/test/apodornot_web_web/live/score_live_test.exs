@@ -96,7 +96,7 @@ defmodule ApodornotWebWeb.ScoreLiveTest do
 
     # Collapse, then re-open.
     rendered = view |> element("button[phx-click='toggle_chat']") |> render_click()
-    assert rendered =~ "ask claude"  # collapsed-tab label
+    assert rendered =~ "review chat"  # collapsed-tab label
     refute rendered =~ "ask about a metric"
 
     rendered = view |> element("button[phx-click='toggle_chat']") |> render_click()

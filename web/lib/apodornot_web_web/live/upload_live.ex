@@ -147,7 +147,7 @@ defmodule ApodornotWebWeb.UploadLive do
                 class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 font-mono text-xs leading-relaxed focus:outline-none focus:border-sky-400 placeholder:text-slate-700"
               >{@equipment_context}</textarea>
               <p class="text-slate-500 text-xs leading-relaxed">
-                Passed to Claude in the chat sidebar so it can reason about whether a metric reading is plausible for your setup (e.g. a small refractor on a strain-wave mount won't have meaningful vignetting or tracking error).
+                Used by the review sidebar to reason about whether a metric reading is plausible for your setup (e.g. a small refractor on a strain-wave mount won't have meaningful vignetting or tracking error).
               </p>
             </div>
           </details>
