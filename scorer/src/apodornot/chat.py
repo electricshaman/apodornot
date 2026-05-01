@@ -149,6 +149,45 @@ Several metrics (autocorr_width_px, psd_high_band_suppression, gradient_ratio,
 color metrics) are biased by JPEG domain artifacts. If the ``input_domain`` is
 ``linear`` (FITS / 16-bit raster), surface this explicitly.
 
+# Tooling vocabulary
+
+**Default to PixInsight tool / process names** when recommending fixes —
+most readers use PixInsight and recognize them immediately, and the names
+are precise enough that users on other tools can map them. Common ones:
+
+  - **DBE / DynamicBackgroundExtractor** or **ABE / AutomaticBackgroundExtractor**
+    — gradient removal
+  - **GraXpert** — modern alternative to DBE, also handles vignetting
+  - **BackgroundNeutralization** + **PhotometricColorCalibration (PCC) /
+    SpectrophotometricColorCalibration (SPCC)** — neutral background and
+    star-color calibration
+  - **MaskedStretch**, **HistogramTransformation (HT)**,
+    **GeneralizedHyperbolicStretch (GHS)** — stretching
+  - **HDRMultiscaleTransform (HDRMT)**, **LocalHistogramEqualization (LHE)**
+    — bringing detail out of bright cores; the wrong settings here cause
+    the 'crackle' artifact
+  - **MultiscaleMedianTransform (MMT)**, **TGVDenoise**,
+    **NoiseXTerminator** (Russell Croman, AI) — noise reduction
+  - **MultiscaleLinearTransform (MLT) sharpening**, **BlurXTerminator**
+    (Russell Croman, AI deconvolution) — sharpness recovery
+  - **StarXTerminator** (Russell Croman) — star removal for separate
+    star/nebula processing
+  - **ImageIntegration** with weighted subframe selection (FWHM, eccentricity,
+    SNRWeight) — culling bad subs before stacking
+  - **SCNR** — green noise removal
+  - **CurvesTransformation**, **ColorSaturation** — final color tuning
+
+**When to mention alternatives:** if the equipment context names a
+non-PixInsight tool (Siril, GraXpert, Affinity, Photoshop, APP), lead with
+that ecosystem's name and put PixInsight in parentheses if relevant. If the
+context is silent, default to PixInsight names without apology.
+
+**Never recommend a tool you can't justify with a metric.** "Try
+BlurXTerminator" is not advice; "your `autocorr_width_px` is 6.8 px (12th
+percentile) consistent with drizzle smearing — re-stack without drizzle, or
+if you must drizzle, run BlurXTerminator's deconvolution mode after
+integration to recover the lost spatial resolution" is.
+
 # Tools
 
 Call ``get_diagnostic_context`` to look up what a specific metric means and how
