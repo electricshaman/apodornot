@@ -109,7 +109,7 @@ def _diag_fwhm(pct: float, value: float, ctx: dict) -> str | None:
 @_diag("median_eccentricity")
 def _diag_ecc(pct: float, value: float, ctx: dict) -> str | None:
     pattern = ctx.get("eccentricity_pattern", "")
-    if pct < 25 and value > 0.3:
+    if pct < 50 and value > 0.3:
         if pattern == "uniform_drift":
             return (
                 f"Star eccentricity is elevated ({value:.2f}) with consistent orientation — "
@@ -122,13 +122,18 @@ def _diag_ecc(pct: float, value: float, ctx: dict) -> str | None:
                 "coma, field curvature, or tilt. A coma corrector or sensor-tilt adjustment "
                 "would help."
             )
-        return f"Star eccentricity ({value:.2f}) is in the bottom {pct:.0f}% — likely tracking or optical issue."
+        return (
+            f"Star eccentricity ({value:.2f}) is at the {pct:.0f}th percentile — "
+            "stars are noticeably elongated. With a `random_seeing` pattern, atmosphere is "
+            "the most likely cause; subframe-weighting and culling the worst 30% by FWHM/ecc "
+            "before integration is the lever."
+        )
     return None
 
 
 @_diag("fwhm_corner_excess")
 def _diag_corner(pct: float, value: float, ctx: dict) -> str | None:
-    if pct < 25 and value > 0.15:
+    if pct < 50 and value > 0.15:
         return (
             f"Corner stars are {value * 100:.0f}% larger than center — field curvature, tilt, "
             "or coma. Image circle may be too small for the sensor."
@@ -138,7 +143,7 @@ def _diag_corner(pct: float, value: float, ctx: dict) -> str | None:
 
 @_diag("psd_high_band_suppression")
 def _diag_nr(pct: float, value: float, ctx: dict) -> str | None:
-    if pct < 25 and value > 0.5:
+    if pct < 50 and value > 0.5:
         return (
             f"Background PSD shows {value * 100:.0f}% high-band suppression — aggressive "
             "luminance noise reduction, giving a 'plastic' look. Lighter NR would preserve "
@@ -149,7 +154,7 @@ def _diag_nr(pct: float, value: float, ctx: dict) -> str | None:
 
 @_diag("autocorr_width_px")
 def _diag_ac(pct: float, value: float, ctx: dict) -> str | None:
-    if pct < 25 and value > 2.0:
+    if pct < 50 and value > 2.0:
         return (
             f"Noise autocorrelation width {value:.2f} px is wider than ideal — drizzling, "
             "resampling, or noise reduction has smeared pixel-level detail."
@@ -159,8 +164,12 @@ def _diag_ac(pct: float, value: float, ctx: dict) -> str | None:
 
 @_diag("snr_target_median")
 def _diag_snr(pct: float, value: float, ctx: dict) -> str | None:
-    if pct < 25:
-        return f"Target SNR ({value:.1f}) in the bottom {pct:.0f}% — more integration time would help."
+    if pct < 50:
+        return (
+            f"Target SNR ({value:.1f}) at the {pct:.0f}th percentile — below the reference median. "
+            "More integration time is the most direct fix; each doubling of subs cuts noise by sqrt(2). "
+            "Narrowband filters or a darker site help if you're light-pollution-limited."
+        )
     if pct > 85:
         return f"Strong target SNR ({value:.1f}, top {100 - pct:.0f}%) — well-exposed."
     return None
@@ -168,7 +177,7 @@ def _diag_snr(pct: float, value: float, ctx: dict) -> str | None:
 
 @_diag("gradient_ratio")
 def _diag_gradient(pct: float, value: float, ctx: dict) -> str | None:
-    if pct < 25 and value > 5.0:
+    if pct < 50 and value > 5.0:
         return (
             f"Sky gradient is {value:.1f}x the noise floor — light pollution gradient or "
             "incomplete flat-field correction. Try gradient removal in processing or improve "
@@ -179,7 +188,7 @@ def _diag_gradient(pct: float, value: float, ctx: dict) -> str | None:
 
 @_diag("vignetting_falloff")
 def _diag_vignette(pct: float, value: float, ctx: dict) -> str | None:
-    if pct < 25 and value > 0.1:
+    if pct < 50 and value > 0.1:
         return (
             f"Residual vignetting ({value * 100:.0f}% center-to-corner falloff) — flat-field "
             "calibration is incomplete or missing."
@@ -189,17 +198,17 @@ def _diag_vignette(pct: float, value: float, ctx: dict) -> str | None:
 
 @_diag("color_overall_score")
 def _diag_color(pct: float, value: float, ctx: dict) -> str | None:
-    if pct < 25:
+    if pct < 50:
         return (
-            f"Color calibration is in the bottom {pct:.0f}% — star colors look uniform, "
-            "background may be color-cast, or palette mapping is too aggressive."
+            f"Color calibration is at the {pct:.0f}th percentile — star colors may be uniform, "
+            "background may carry a cast, or palette mapping is heavier than typical."
         )
     return None
 
 
 @_diag("star_diversity_score")
 def _diag_star_div(pct: float, value: float, ctx: dict) -> str | None:
-    if pct < 25 and value < 0.3:
+    if pct < 50 and value < 0.3:
         return (
             "Star colors collapsed to nearly monochrome — color information was destroyed "
             "in processing (heavy saturation, white-balance, or noise reduction on the chroma channels)."
@@ -209,7 +218,7 @@ def _diag_star_div(pct: float, value: float, ctx: dict) -> str | None:
 
 @_diag("background_chroma_distance")
 def _diag_bgchroma(pct: float, value: float, ctx: dict) -> str | None:
-    if pct < 25 and value > 0.04:
+    if pct < 50 and value > 0.04:
         return (
             f"Background has a noticeable color cast (chroma distance {value:.3f}) — "
             "background neutralization step in processing would help."
