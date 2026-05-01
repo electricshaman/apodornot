@@ -505,7 +505,7 @@ defmodule ApodornotWebWeb.ScoreLive do
           </button>
         </div>
 
-        <div id="chat-thread" class="flex-1 overflow-y-auto p-4 space-y-4 text-sm" phx-update="ignore">
+        <div id="chat-thread" class="flex-1 overflow-y-auto p-4 space-y-4 text-sm">
           <%= for {m, i} <- Enum.with_index(@messages) do %>
             <%= if m.role == "user" do %>
               <div class="border-l-2 border-sky-400 pl-3">
