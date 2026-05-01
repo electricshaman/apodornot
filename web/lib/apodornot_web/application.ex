@@ -13,6 +13,7 @@ defmodule ApodornotWeb.Application do
       {Phoenix.PubSub, name: ApodornotWeb.PubSub},
       {Task.Supervisor, name: ApodornotWeb.PipelineTaskSup},
       {Registry, keys: :unique, name: ApodornotWeb.SubmissionRegistry},
+      ApodornotWeb.SubmissionStore,
       ApodornotWebWeb.Endpoint
     ]
 

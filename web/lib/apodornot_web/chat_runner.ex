@@ -19,18 +19,20 @@ defmodule ApodornotWeb.ChatRunner do
   """
   def start(target, ref, scorecard, messages, opts \\ []) do
     image_path = Keyword.get(opts, :image_path)
+    equipment_context = Keyword.get(opts, :equipment_context)
 
     Task.Supervisor.start_child(ApodornotWeb.PipelineTaskSup, fn ->
-      run(target, ref, scorecard, messages, image_path)
+      run(target, ref, scorecard, messages, image_path, equipment_context)
     end)
   end
 
-  defp run(target, ref, scorecard, messages, image_path) do
+  defp run(target, ref, scorecard, messages, image_path, equipment_context) do
     url = pipeline_url() <> "/chat"
 
     body =
       %{"scorecard" => scorecard, "messages" => messages}
       |> maybe_put("image_path", image_path)
+      |> maybe_put("equipment_context", equipment_context)
 
     try do
       Req.post!(

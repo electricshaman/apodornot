@@ -1,7 +1,7 @@
 defmodule ApodornotWebWeb.UploadLive do
   use ApodornotWebWeb, :live_view
 
-  alias ApodornotWeb.PipelineRunner
+  alias ApodornotWeb.{PipelineRunner, SubmissionStore}
 
   @target_types ~w(auto rosette orion_nebula horsehead emission_nebula
                   reflection_nebula planetary_nebula galaxy globular_cluster
@@ -12,7 +12,12 @@ defmodule ApodornotWebWeb.UploadLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(target_types: @target_types, target_type: "auto", error: nil)
+     |> assign(
+       target_types: @target_types,
+       target_type: "auto",
+       equipment_context: "",
+       error: nil
+     )
      |> allow_upload(:image,
        accept: ~w(.fits .fit .tif .tiff .png .jpg .jpeg),
        max_file_size: @max_size,
@@ -21,11 +26,13 @@ defmodule ApodornotWebWeb.UploadLive do
      )}
   end
 
-  def handle_event("validate", %{"target_type" => t}, socket) do
-    {:noreply, assign(socket, target_type: t, error: nil)}
-  end
+  def handle_event("validate", params, socket) do
+    target = Map.get(params, "target_type", socket.assigns.target_type)
+    equipment = Map.get(params, "equipment_context", socket.assigns.equipment_context)
 
-  def handle_event("validate", _params, socket), do: {:noreply, socket}
+    {:noreply,
+     assign(socket, target_type: target, equipment_context: equipment, error: nil)}
+  end
 
   def handle_event("submit", _params, socket) do
     case socket.assigns.uploads.image.entries do
@@ -36,7 +43,7 @@ defmodule ApodornotWebWeb.UploadLive do
         upload_dir = Application.fetch_env!(:apodornot_web, :upload_dir)
         File.mkdir_p!(upload_dir)
 
-        [{path, filename}] =
+        [{path, _client_name}] =
           consume_uploaded_entries(socket, :image, fn meta, entry ->
             dest = Path.join(upload_dir, "#{random_id()}_#{entry.client_name}")
             File.cp!(meta.path, dest)
@@ -45,11 +52,20 @@ defmodule ApodornotWebWeb.UploadLive do
 
         submission_id = random_id()
         target = if socket.assigns.target_type == "auto", do: nil, else: socket.assigns.target_type
+        upload_basename = Path.basename(path)
+
+        SubmissionStore.put(submission_id, %{
+          image_path: path,
+          image_basename: upload_basename,
+          target_type: target,
+          equipment_context: socket.assigns.equipment_context
+        })
+
         PipelineRunner.start(submission_id, path, target)
 
         {:noreply,
          socket
-         |> push_navigate(to: ~p"/s/#{submission_id}?image=#{filename}")}
+         |> push_navigate(to: ~p"/s/#{submission_id}")}
     end
   end
 
@@ -117,6 +133,24 @@ defmodule ApodornotWebWeb.UploadLive do
               </option>
             </select>
           </div>
+
+          <details class="group">
+            <summary class="font-mono text-xs uppercase tracking-widest text-slate-500 cursor-pointer hover:text-slate-300 select-none flex items-center gap-2">
+              <span class="inline-block transition-transform group-open:rotate-90">▸</span>
+              equipment context (optional)
+            </summary>
+            <div class="mt-3 space-y-2">
+              <textarea
+                name="equipment_context"
+                rows="6"
+                placeholder={"Telescope: e.g. William Optics Pleiades 68\nCamera: e.g. ZWO ASI2600MC Pro\nMount: e.g. ZWO AM5\nFilters / integration / processing chain (PixInsight, BlurX, etc.)"}
+                class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 font-mono text-xs leading-relaxed focus:outline-none focus:border-sky-400 placeholder:text-slate-700"
+              >{@equipment_context}</textarea>
+              <p class="text-slate-500 text-xs leading-relaxed">
+                Passed to Claude in the chat sidebar so it can reason about whether a metric reading is plausible for your setup (e.g. a small refractor on a strain-wave mount won't have meaningful vignetting or tracking error).
+              </p>
+            </div>
+          </details>
 
           <div :if={@error} class="text-rose-400 font-mono text-sm">{@error}</div>
 

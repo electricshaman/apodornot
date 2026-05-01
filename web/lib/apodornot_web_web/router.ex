@@ -20,6 +20,8 @@ defmodule ApodornotWebWeb.Router do
     live "/", UploadLive, :index
     live "/s/:submission_id", ScoreLive, :show
     live "/s/:submission_id/reference", ReferenceLive, :show
+
+    get "/uploads/:filename", UploadController, :show
   end
 
   # Other scopes may use custom stacks.

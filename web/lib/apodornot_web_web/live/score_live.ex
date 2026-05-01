@@ -1,14 +1,16 @@
 defmodule ApodornotWebWeb.ScoreLive do
   use ApodornotWebWeb, :live_view
 
-  alias ApodornotWeb.{ChatRunner, PipelineRunner}
+  alias ApodornotWeb.{ChatRunner, PipelineRunner, SubmissionStore}
   alias ApodornotWebWeb.AxisDiagnostics
   alias Phoenix.PubSub
 
   @pubsub ApodornotWeb.PubSub
 
   def mount(%{"submission_id" => id} = params, _session, socket) do
-    image_filename = Map.get(params, "image", "image")
+    submission = SubmissionStore.get(id)
+    image_filename = submission[:image_basename] || Map.get(params, "image", "image")
+    equipment_context = submission[:equipment_context] || ""
 
     if connected?(socket) do
       PubSub.subscribe(@pubsub, PipelineRunner.topic(id))
@@ -19,11 +21,12 @@ defmodule ApodornotWebWeb.ScoreLive do
      |> assign(
        submission_id: id,
        image_filename: image_filename,
+       equipment_context: equipment_context,
        scorecard: nil,
        error: nil,
        selected_axis: nil,
-       # Chat state
-       chat_open: false,
+       # Chat state — open by default in the left sidebar
+       chat_open: true,
        chat_messages: [],          # [%{role, content}]
        chat_streaming: false,
        chat_active_ref: nil,       # ref for the in-flight stream
@@ -138,7 +141,8 @@ defmodule ApodornotWebWeb.ScoreLive do
       ref = make_ref()
 
       ChatRunner.start(self(), ref, socket.assigns.scorecard, messages,
-        image_path: socket.assigns.scorecard["image_path"])
+        image_path: socket.assigns.scorecard["image_path"],
+        equipment_context: socket.assigns.equipment_context)
 
       {:noreply,
        socket
@@ -155,23 +159,8 @@ defmodule ApodornotWebWeb.ScoreLive do
 
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-slate-950 text-slate-100 font-sans">
-      <.session_bar image_filename={@image_filename} scorecard={@scorecard} />
-
-      <%= cond do %>
-        <% @error -> %>
-          <.failure_panel error={@error} />
-        <% @scorecard -> %>
-          <.scorecard_view
-            scorecard={@scorecard}
-            image_filename={@image_filename}
-            selected_axis={@selected_axis}
-          />
-        <% true -> %>
-          <.loading_view stages={@streams.stages} />
-      <% end %>
-
-      <.chat_widget
+    <div class="min-h-screen bg-slate-950 text-slate-100 font-sans flex">
+      <.chat_sidebar
         :if={@scorecard}
         open={@chat_open}
         messages={@chat_messages}
@@ -180,6 +169,27 @@ defmodule ApodornotWebWeb.ScoreLive do
         tool_uses={@chat_tool_uses}
         draft={@chat_draft}
       />
+
+      <div class={[
+        "flex-1 min-w-0 transition-all",
+        @scorecard && @chat_open && "ml-[420px]",
+        @scorecard && !@chat_open && "ml-12"
+      ]}>
+        <.session_bar image_filename={@image_filename} scorecard={@scorecard} />
+
+        <%= cond do %>
+          <% @error -> %>
+            <.failure_panel error={@error} />
+          <% @scorecard -> %>
+            <.scorecard_view
+              scorecard={@scorecard}
+              image_filename={@image_filename}
+              selected_axis={@selected_axis}
+            />
+          <% true -> %>
+            <.loading_view stages={@streams.stages} />
+        <% end %>
+      </div>
     </div>
     """
   end
@@ -262,14 +272,31 @@ defmodule ApodornotWebWeb.ScoreLive do
     ~H"""
     <div class="border border-slate-800 bg-slate-900/30 rounded p-4 flex flex-col gap-3">
       <div class="flex justify-between items-center font-mono text-xs">
-        <span class="text-slate-200 truncate">{@image_filename}</span>
+        <span class="text-slate-200 truncate">{display_filename(@image_filename)}</span>
         <span class="text-slate-500 uppercase">{@scorecard["input_domain"]}</span>
       </div>
-      <div class="flex-1 min-h-[280px] bg-black rounded flex items-center justify-center text-slate-700 font-mono text-sm">
-        ({@scorecard["target_category"]})
+      <div class="flex-1 min-h-[280px] bg-black rounded overflow-hidden flex items-center justify-center">
+        <img
+          :if={@image_filename && @image_filename != "image"}
+          src={~p"/uploads/#{@image_filename}"}
+          alt={display_filename(@image_filename)}
+          class="max-w-full max-h-[480px] object-contain"
+        />
+        <span :if={!@image_filename || @image_filename == "image"} class="text-slate-700 font-mono text-sm">
+          ({@scorecard["target_category"]})
+        </span>
       </div>
     </div>
     """
+  end
+
+  # Strip the random_id prefix the upload pipeline adds, for display.
+  defp display_filename(nil), do: ""
+  defp display_filename(name) when is_binary(name) do
+    case String.split(name, "_", parts: 2) do
+      [_id, rest] -> rest
+      _ -> name
+    end
   end
 
   defp overall_score_panel(assigns) do
@@ -399,17 +426,24 @@ defmodule ApodornotWebWeb.ScoreLive do
   defp findings_list(assigns) do
     ~H"""
     <div class="border border-slate-800 bg-slate-900/30 rounded p-5">
-      <div class="font-mono text-[10px] uppercase tracking-widest text-slate-500 mb-3">
-        findings
+      <div class="flex justify-between items-baseline mb-4">
+        <div class="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+          findings
+        </div>
+        <button :if={!Enum.empty?(@diagnostics)}
+                onclick={"navigator.clipboard.writeText(#{Jason.encode!(Enum.join(@diagnostics, "\n\n"))})"}
+                class="font-mono text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-200">
+          copy as markdown
+        </button>
       </div>
       <div :if={Enum.empty?(@diagnostics)} class="text-slate-500 italic text-sm">
         No notable weaknesses.
       </div>
-      <ul class="space-y-2">
-        <li :for={d <- @diagnostics} class="text-slate-200 text-sm leading-relaxed before:content-['—_'] before:text-slate-600">
-          {d}
-        </li>
-      </ul>
+      <div class="space-y-5 prose-findings">
+        <div :for={d <- @diagnostics}>
+          {render_md(d)}
+        </div>
+      </div>
     </div>
     """
   end
@@ -457,38 +491,46 @@ defmodule ApodornotWebWeb.ScoreLive do
     """
   end
 
-  defp chat_widget(assigns) do
+  defp chat_sidebar(assigns) do
     ~H"""
     <%= if @open do %>
-      <div class="fixed bottom-0 right-0 z-50 w-[min(440px,100vw)] h-[min(620px,80vh)] bg-slate-900 border-l border-t border-slate-800 rounded-tl flex flex-col shadow-2xl">
+      <aside class="fixed left-0 top-0 bottom-0 w-[420px] bg-slate-900 border-r border-slate-800 flex flex-col z-30">
         <div class="flex justify-between items-center px-4 py-3 border-b border-slate-800">
           <div class="font-mono text-[10px] uppercase tracking-widest text-slate-500">
             chat · grounded in your scorecard
           </div>
-          <button phx-click="toggle_chat" class="text-slate-500 hover:text-slate-200 font-mono text-sm">
-            close
+          <button phx-click="toggle_chat" class="text-slate-500 hover:text-slate-200 font-mono text-xs"
+                  title="Collapse chat">
+            ◂ collapse
           </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
+        <div id="chat-thread" class="flex-1 overflow-y-auto p-4 space-y-4 text-sm" phx-update="ignore">
+          <%= for {m, i} <- Enum.with_index(@messages) do %>
+            <%= if m.role == "user" do %>
+              <div class="border-l-2 border-sky-400 pl-3">
+                <div class="font-mono text-[10px] uppercase tracking-widest text-sky-400 mb-1">you</div>
+                <div class="text-slate-300 leading-relaxed whitespace-pre-wrap">{m.content}</div>
+              </div>
+            <% else %>
+              <div class="prose-chat">
+                {render_md(m.content)}
+              </div>
+            <% end %>
+          <% end %>
+
           <div :if={@messages == [] and not @streaming} class="text-slate-500 italic">
-            Ask anything about your scorecard. Claude has access to the metric knowledge base.
+            Ask anything about your scorecard. Claude has the image, the metrics, and the equipment context.
           </div>
 
-          <div :for={m <- @messages} class={[
-            "leading-relaxed whitespace-pre-wrap",
-            m.role == "user" && "text-slate-300 font-mono text-xs uppercase tracking-wider before:content-['you_·_']",
-            m.role == "assistant" && "text-slate-100"
-          ]}>
-            {m.content}
-          </div>
-
-          <div :if={@streaming} class="text-slate-100 leading-relaxed whitespace-pre-wrap">
-            <span :if={@active_text != ""}>{@active_text}</span>
-            <span :for={t <- @tool_uses} class="block font-mono text-[10px] uppercase tracking-widest text-sky-400/70 mt-2">
+          <div :if={@streaming} class="prose-chat">
+            <%= if @active_text != "" do %>
+              {render_md(@active_text)}
+            <% end %>
+            <div :for={t <- @tool_uses} class="font-mono text-[10px] uppercase tracking-widest text-sky-400/70 mt-2">
               ↳ checking {t["name"]}
-            </span>
-            <span :if={@active_text == "" and @tool_uses == []} class="text-slate-500 italic">claude is thinking…</span>
+            </div>
+            <div :if={@active_text == "" and @tool_uses == []} class="text-slate-500 italic">claude is thinking…</div>
           </div>
         </div>
 
@@ -507,15 +549,29 @@ defmodule ApodornotWebWeb.ScoreLive do
             send
           </button>
         </form>
-      </div>
+      </aside>
     <% else %>
       <button phx-click="toggle_chat"
-              class="fixed bottom-6 right-6 z-50 px-4 py-3 bg-sky-400 hover:bg-sky-300 text-slate-950 rounded-full font-medium shadow-lg">
-        ask claude
+              class="fixed left-0 top-0 bottom-0 w-12 bg-slate-900 border-r border-slate-800 z-30 flex items-center justify-center text-slate-500 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+              title="Open chat">
+        <span class="font-mono text-[10px] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
+          ▸ ask claude
+        </span>
       </button>
     <% end %>
     """
   end
+
+  # Render a markdown string as safe HTML. Earmark handles ###, **, lists,
+  # paragraphs, etc. The wrapping div applies prose-chat styles defined in
+  # the global CSS / Tailwind layer.
+  defp render_md(md) when is_binary(md) do
+    case Earmark.as_html(md, escape: true, smartypants: false) do
+      {:ok, html, _} -> Phoenix.HTML.raw(html)
+      {:error, html, _} -> Phoenix.HTML.raw(html)
+    end
+  end
+  defp render_md(_), do: ""
 
   defp failure_panel(assigns) do
     ~H"""

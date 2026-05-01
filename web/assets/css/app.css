@@ -103,3 +103,77 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+
+/* Markdown rendering — chat assistant turns + Findings list */
+.prose-chat, .prose-findings {
+  color: rgb(226 232 240);
+  line-height: 1.55;
+  font-size: 0.875rem;
+}
+.prose-chat h1, .prose-findings h1,
+.prose-chat h2, .prose-findings h2,
+.prose-chat h3, .prose-findings h3,
+.prose-chat h4, .prose-findings h4 {
+  color: rgb(241 245 249);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+.prose-findings h3 {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: rgb(248 250 252);
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid rgb(30 41 59);
+}
+.prose-chat h2 { font-size: 1rem; }
+.prose-chat h3 { font-size: 0.95rem; color: rgb(125 211 252); }
+.prose-chat p, .prose-findings p {
+  margin: 0.5rem 0;
+}
+.prose-chat strong, .prose-findings strong {
+  color: rgb(248 250 252);
+  font-weight: 600;
+}
+.prose-chat code, .prose-findings code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8rem;
+  background: rgb(15 23 42 / 0.6);
+  padding: 0 0.25rem;
+  border-radius: 0.2rem;
+  color: rgb(186 230 253);
+}
+.prose-chat ul, .prose-chat ol, .prose-findings ul, .prose-findings ol {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+.prose-chat li, .prose-findings li {
+  margin: 0.25rem 0;
+}
+.prose-chat hr, .prose-findings hr {
+  border: 0;
+  border-top: 1px solid rgb(30 41 59);
+  margin: 1rem 0;
+}
+.prose-chat table, .prose-findings table {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8rem;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+}
+.prose-chat th, .prose-chat td, .prose-findings th, .prose-findings td {
+  border: 1px solid rgb(30 41 59);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
+.prose-chat th, .prose-findings th {
+  background: rgb(15 23 42 / 0.5);
+  color: rgb(148 163 184);
+  font-weight: 500;
+}
