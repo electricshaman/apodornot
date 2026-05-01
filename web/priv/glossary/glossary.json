@@ -171,6 +171,30 @@
     "advanced": "90th percentile of the reference distribution. Upper whisker on quantile plots; the high-tail benchmark."
   },
 
+  "corner_fwhm_excess": {
+    "label": "Corner FWHM excess",
+    "beginner": "How much fatter your stars look at the corners of the frame compared to the center. Big number = the lens isn't sharp at the edges.",
+    "intermediate": "The ratio of corner-region star sharpness (median FWHM in the outer 25% of the field) to center-region sharpness (inner 50%). Large positive values indicate field curvature, sensor tilt, or coma.",
+    "advanced": "(median FWHM in corner annulus, r > 0.7·half-diagonal) / (median FWHM in center disk, r < 0.4·half-diagonal) − 1. Half-diagonal-based binning so it's robust across aspect ratios. Combined with the eccentricity pattern it discriminates field curvature (FWHM rises radially) from coma (eccentricity radial AND FWHM rises) from tilt (asymmetric corner-to-corner)."
+  },
+  "hf_suppression": {
+    "label": "High-frequency PSD suppression",
+    "beginner": "If your noise reduction was too heavy, the fine grain in the dark sky gets smoothed away. This number measures how much.",
+    "intermediate": "How much the high-frequency (small-scale) part of your background noise has been suppressed compared to its mid-frequency baseline. Big values = aggressive NR; the sky looks smooth and 'plastic' instead of having natural grain.",
+    "advanced": "1 − (mean PSD power in upper band) / (mean PSD power in mid band), measured on background-only patches. >0.5 indicates aggressive low-pass NR (NoiseXTerminator on a high setting, heavy MMT/TGV). The signature is independent of overall noise level — it's the SHAPE that's diagnostic."
+  },
+  "noise_psd_slope": {
+    "label": "Noise PSD spectral slope",
+    "beginner": "Tells you what the dark sky's noise 'shape' looks like. Real shot noise looks one way; over-processed noise looks another.",
+    "intermediate": "The log-log slope of the background noise's power spectrum. A flat slope (~0) means well-behaved white noise; steep negative slopes mean low-frequency lumpy noise from over-smoothing or calibration issues.",
+    "advanced": "Linear-regression slope of log(PSD) vs log(frequency) for background patches. Pure shot noise is white (slope ≈ 0). Slope < −1 indicates low-frequency dominance (NR smoothing, residual gradient). Slope > 0 indicates a high-frequency boost (oversharpening, ringing)."
+  },
+  "detail_slope": {
+    "label": "Target detail spectral slope",
+    "beginner": "Real astronomical detail follows a predictable pattern. This number checks whether yours does — sharpening artifacts make it look unnatural.",
+    "intermediate": "The log-log slope of the target region's radial power spectrum. Real diffuse astronomical structure has a smooth power-law falloff; sharpening kernels add bumps that make the slope shallower (less negative) than expected.",
+    "advanced": "Power-law slope fit to the windowed-FFT radial power spectrum of the target region, over [0.01, 0.25] cy/px. Astronomical sources typically yield slopes in [−3, −2]. Flatter than −2 with a corresponding bump in the residual is a sharpening signature; steeper than −3 suggests over-smoothed detail."
+  },
   "background_sigma": {
     "label": "Background σ (sigma)",
     "beginner": "How noisy the dark sky parts of your image are. Lower = cleaner.",
