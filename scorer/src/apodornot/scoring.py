@@ -374,21 +374,43 @@ def load_default_distributions() -> ArchiveDistributions | None:
 
 
 def select_reference_set(
-    distributions: ArchiveDistributions, target_type: str | None, *, min_n: int = 8
+    distributions: ArchiveDistributions,
+    target_type: str | None,
+    *,
+    min_n: int = 3,
+    explicit: bool = False,
 ) -> tuple[str, dict[str, Any]]:
-    """Choose the reference category. Falls back to 'global' if too few samples."""
+    """Choose the reference category.
+
+    ``explicit=True`` means the user typed the target_type themselves; in that
+    case we honor their choice down to ``min_n=1`` and let the small-n caveat
+    surface as a warning rather than silently substituting global. With
+    ``explicit=False`` (auto-detected from filename), we fall back to the
+    global pool when the candidate has fewer than ``min_n`` entries.
+
+    The previous default ``min_n=8`` was too aggressive given the bundled
+    distribution's per-category sizes — categories like emission_nebula (6)
+    or supernova_remnant (4) all silently substituted to the 100-image
+    global pool, hiding the user's explicit choice.
+    """
     candidate = (target_type or "global").strip().lower().replace(" ", "_") or "global"
     metrics = distributions.by_category.get(candidate)
     if metrics is None:
         candidate = "global"
         metrics = distributions.by_category.get("global", {})
-    # Check sample size — if any metric in the chosen category has too few entries
-    # we fall back to the global pool.
-    if metrics:
-        max_n = max((d.n for d in metrics.values()), default=0)
-        if max_n < min_n and "global" in distributions.by_category:
-            candidate = "global"
-            metrics = distributions.by_category["global"]
+    if not metrics:
+        return candidate, metrics
+
+    max_n = max((d.n for d in metrics.values()), default=0)
+
+    # Explicit user choice: honor down to n=1, never silently fall back.
+    if explicit:
+        return candidate, metrics
+
+    # Auto-detected: fall back to global if too few samples.
+    if max_n < min_n and "global" in distributions.by_category:
+        return "global", distributions.by_category["global"]
+
     return candidate, metrics
 
 
@@ -568,12 +590,15 @@ def score_evaluation(
     summary = evaluation.to_summary()
 
     # Resolve target category — explicit beats auto-detected.
-    if target_type:
+    explicit = bool(target_type)
+    if explicit:
         target_category = target_type
     else:
         title_guess = Path(evaluation.image_path).stem
         target_category = categorize_entry(title_guess)
-    reference_category, metrics = select_reference_set(distributions, target_category)
+    reference_category, metrics = select_reference_set(
+        distributions, target_category, explicit=explicit
+    )
     reference_n = max((d.n for d in metrics.values()), default=0)
 
     metric_scores = score_metrics(summary, metrics)
@@ -585,6 +610,13 @@ def score_evaluation(
 
     input_domain = evaluation.image_chars.metadata.input_domain
     warnings = _domain_warnings(input_domain, reference_domain="display")
+    # Surface small-n caveats when the chosen reference set is below ~10 entries.
+    if reference_n < 10 and reference_category != "global":
+        warnings.append(
+            f"Small reference set: only {reference_n} APOD images in the "
+            f"'{reference_category}' bucket. Percentile ranks may be noisy. "
+            "Treat this as directional rather than precise."
+        )
 
     return ScoreCard(
         image_path=evaluation.image_path,
