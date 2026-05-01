@@ -17,15 +17,20 @@ defmodule ApodornotWeb.ChatRunner do
   caller correlate this stream with a specific assistant turn (in case of
   rapid repeated submissions).
   """
-  def start(target, ref, scorecard, messages) do
+  def start(target, ref, scorecard, messages, opts \\ []) do
+    image_path = Keyword.get(opts, :image_path)
+
     Task.Supervisor.start_child(ApodornotWeb.PipelineTaskSup, fn ->
-      run(target, ref, scorecard, messages)
+      run(target, ref, scorecard, messages, image_path)
     end)
   end
 
-  defp run(target, ref, scorecard, messages) do
+  defp run(target, ref, scorecard, messages, image_path) do
     url = pipeline_url() <> "/chat"
-    body = %{"scorecard" => scorecard, "messages" => messages}
+
+    body =
+      %{"scorecard" => scorecard, "messages" => messages}
+      |> maybe_put("image_path", image_path)
 
     try do
       Req.post!(
@@ -47,6 +52,10 @@ defmodule ApodornotWeb.ChatRunner do
         send(target, {:chat_event, ref, "done", %{}})
     end
   end
+
+  defp maybe_put(map, _, nil), do: map
+  defp maybe_put(map, _, ""), do: map
+  defp maybe_put(map, k, v), do: Map.put(map, k, v)
 
   defp pipeline_url, do: Application.fetch_env!(:apodornot_web, :pipeline_url)
 end

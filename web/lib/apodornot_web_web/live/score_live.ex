@@ -2,6 +2,7 @@ defmodule ApodornotWebWeb.ScoreLive do
   use ApodornotWebWeb, :live_view
 
   alias ApodornotWeb.{ChatRunner, PipelineRunner}
+  alias ApodornotWebWeb.AxisDiagnostics
   alias Phoenix.PubSub
 
   @pubsub ApodornotWeb.PubSub
@@ -136,7 +137,8 @@ defmodule ApodornotWebWeb.ScoreLive do
       messages = socket.assigns.chat_messages ++ [%{role: "user", content: draft}]
       ref = make_ref()
 
-      ChatRunner.start(self(), ref, socket.assigns.scorecard, messages)
+      ChatRunner.start(self(), ref, socket.assigns.scorecard, messages,
+        image_path: socket.assigns.scorecard["image_path"])
 
       {:noreply,
        socket
@@ -296,32 +298,103 @@ defmodule ApodornotWebWeb.ScoreLive do
   defp axis_card(assigns) do
     score = assigns.axis["score"] || 0
     color = tier_color(score)
-    assigns = assign(assigns, score: score, color: color)
+    p = max(0.0, min(100.0, score * 1.0))
+    assigns = assign(assigns, score: score, color: color, p: p)
 
     ~H"""
     <button
       phx-click="select_axis"
       phx-value-axis={@axis["axis"]}
-      class="text-left border border-slate-800 bg-slate-900/30 rounded p-4 hover:border-slate-700 transition-colors"
+      class="text-left border border-slate-800 bg-slate-900/30 hover:border-slate-700 hover:bg-slate-900/50 rounded p-4 flex flex-col gap-3 transition-colors"
     >
-      <div class="font-mono text-[10px] uppercase tracking-widest text-slate-500 mb-2">
-        {@axis["axis"]}
+      <div class="flex justify-between items-baseline">
+        <div class="text-slate-300 text-xs font-medium tracking-wide">
+          {@axis["axis"]}
+        </div>
+        <div class="font-mono text-xl text-slate-100 tabular-nums">
+          {format_score(@score)}
+        </div>
       </div>
-      <div class="text-2xl font-light tabular-nums mb-2" style={"color: #{@color}"}>
-        {format_score(@score)}
-      </div>
-      <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
-        <div class="h-full" style={"width: #{@score}%; background: #{@color}"}></div>
-      </div>
-      <div class="mt-3 space-y-1 font-mono text-[11px]">
-        <div :for={c <- (@axis["components"] || []) |> Enum.take(3)} class="flex justify-between text-slate-500">
-          <span class="truncate">{c["metric"]}</span>
-          <span class="tabular-nums text-slate-300">{format_score(c["percentile"])}</span>
+
+      <.percentile_bar p={@p} color={@color} />
+
+      <div class="flex flex-col gap-2 mt-1">
+        <div :for={c <- (@axis["components"] || []) |> Enum.take(3)} class="flex flex-col gap-0.5 font-mono text-[11px] tabular-nums">
+          <div class="flex justify-between gap-2 items-baseline">
+            <span class="font-sans text-[11px] text-slate-500 truncate">
+              {(c["label"] && c["label"] != "" && c["label"]) || format_metric_label(c["metric"])}
+            </span>
+            <span class="text-slate-500 shrink-0">p{format_score(c["percentile"])}</span>
+          </div>
+          <span class="text-slate-200 truncate">{format_value_with_unit(c["value"], c["unit"], c["format"])}</span>
         </div>
       </div>
     </button>
     """
   end
+
+  attr :p, :float, required: true
+  attr :color, :string, required: true
+
+  defp percentile_bar(assigns) do
+    ~H"""
+    <svg viewBox="0 0 100 14" preserveAspectRatio="none" class="w-full block h-3.5">
+      <rect x="0" y="4" width="100" height="6" fill="rgba(255,255,255,0.06)" rx="3" />
+      <rect x="25" y="4" width="50" height="6" fill="rgba(255,255,255,0.05)" />
+      <line x1="50" y1="2" x2="50" y2="12" stroke="rgba(255,255,255,0.3)" stroke-width="1" />
+      <rect x="0" y="4" width={@p} height="6" fill={@color} fill-opacity="0.25" />
+      <line x1={@p} y1="1" x2={@p} y2="13" stroke={@color} stroke-width="1.5" />
+      <circle cx={@p} cy="7" r="2.5" fill={@color} />
+    </svg>
+    """
+  end
+
+  defp format_metric_label(nil), do: "—"
+  defp format_metric_label(name) when is_binary(name) do
+    name
+    |> String.replace("_", " ")
+    |> String.replace(~r/\s+px$/, " (px)")
+  end
+  defp format_metric_label(other), do: to_string(other)
+
+  defp format_value_with_unit(nil, _, _), do: "—"
+  defp format_value_with_unit(v, unit, fmt) when is_number(v) do
+    rendered =
+      case fmt do
+        "scientific" -> sci_notation(v)
+        "decimal" -> decimal_str(v)
+        "px" -> :erlang.float_to_binary(v * 1.0, decimals: 2)
+        _ -> default_num(v)
+      end
+
+    if unit && unit != "", do: "#{rendered} #{unit}", else: rendered
+  end
+  defp format_value_with_unit(other, _, _), do: to_string(other)
+
+  defp sci_notation(0.0), do: "0"
+  defp sci_notation(v) when is_number(v) do
+    abs_v = abs(v)
+    cond do
+      abs_v >= 0.001 and abs_v < 1000 -> decimal_str(v)
+      true ->
+        exp = floor(:math.log10(abs_v))
+        mantissa = v / :math.pow(10, exp)
+        "#{:erlang.float_to_binary(mantissa * 1.0, decimals: 2)}e#{if exp >= 0, do: "+", else: ""}#{trunc(exp)}"
+    end
+  end
+
+  defp decimal_str(v) when is_number(v) do
+    abs_v = abs(v * 1.0)
+    cond do
+      abs_v >= 1000 -> :erlang.float_to_binary(v * 1.0, decimals: 0)
+      abs_v >= 10 -> :erlang.float_to_binary(v * 1.0, decimals: 1)
+      abs_v >= 1 -> :erlang.float_to_binary(v * 1.0, decimals: 2)
+      true -> :erlang.float_to_binary(v * 1.0, decimals: 3)
+    end
+  end
+
+  defp default_num(v) when is_integer(v), do: Integer.to_string(v)
+  defp default_num(v) when is_number(v), do: decimal_str(v)
 
   defp findings_list(assigns) do
     ~H"""
@@ -354,24 +427,29 @@ defmodule ApodornotWebWeb.ScoreLive do
           close
         </button>
       </div>
-      <div class="p-6 space-y-4">
+      <div class="p-6 space-y-6">
         <%
           axis_data = Enum.find(@scorecard["axes"], &(&1["axis"] == @axis))
           components = (axis_data && axis_data["components"]) || []
+          all_metrics = @scorecard["metrics"] || []
         %>
-        <div :for={c <- components} class="border border-slate-800 rounded p-4">
-          <div class="font-mono text-xs text-slate-300 mb-2">{c["metric"]}</div>
-          <div class="flex items-baseline gap-4 mb-2">
-            <span class="text-2xl tabular-nums">{format_value(c["value"])}</span>
-            <span class="font-mono text-xs text-slate-500">value</span>
-            <span class="text-2xl tabular-nums ml-auto">{format_score(c["percentile"])}</span>
-            <span class="font-mono text-xs text-slate-500">pct</span>
+
+        <AxisDiagnostics.axis_diagnostic axis={@axis} data={@scorecard["stage_diagnostics"] || %{}} />
+
+        <div>
+          <div class="font-mono text-[10px] uppercase tracking-widest text-slate-500 mb-3">
+            component metrics
           </div>
-          <div class="h-1 bg-slate-800 rounded-full overflow-hidden">
-            <div class="h-full bg-sky-400" style={"width: #{c["percentile"] || 0}%"}></div>
-          </div>
-          <div class="mt-2 font-mono text-[10px] text-slate-600 uppercase tracking-wider">
-            {if c["higher_is_better"], do: "higher is better", else: "lower is better"}
+          <div class="space-y-4">
+            <%= for c <- components, m = Enum.find(all_metrics, &(&1["metric"] == c["metric"])), m do %>
+              <AxisDiagnostics.quantile_chart
+                metric={c["metric"]}
+                value={c["value"]}
+                percentile={c["percentile"]}
+                higher_is_better={c["higher_is_better"]}
+                quantiles={m["quantiles"] || %{}}
+              />
+            <% end %>
           </div>
         </div>
       </div>
