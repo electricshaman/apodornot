@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import optimize
 
-from .image_chars import SEG_BACKGROUND, ImageCharacterization
+from .image_chars import SEG_BACKGROUND, SEG_TARGET, ImageCharacterization
 from .logging import get_logger
 
 log = get_logger("apodornot.gradient")
@@ -123,13 +123,27 @@ def _radial_falloff(r: np.ndarray, center: float, amp: float, power: float) -> n
     return center - amp * np.power(np.maximum(r, 0.0), power)
 
 
-def detect_vignetting(background: np.ndarray) -> VignettingResult:
+def detect_vignetting(
+    background: np.ndarray, segmentation: np.ndarray | None = None
+) -> VignettingResult:
     """Fit center - amp * r^power; measure center-to-corner percentage falloff.
 
-    Down-samples the background map for speed.
+    Robust two-stage fit:
+
+      1. Restrict to ``SEG_BACKGROUND`` pixels (excludes stars + segmented target).
+      2. Bin those by radius into 16 shells, take the **10th percentile** of
+         pixel values per shell, and fit the radial-falloff model to the
+         (shell_radius, p10) pairs.
+
+    Step 2 is the key. SEP's mesh-based background still leaks bright central
+    nebula brightness into the inner-shell pixels (the meshes near the cavity
+    interpolate over the diffuse Hα floor). The shell-p10 picks the *true sky*
+    pixels in each shell — the bottom decile of background-classified
+    intensities — so a nebula-centered image isn't misread as having a bright
+    center. Without this, Tiffany's Rosette reported 78% spurious vignetting
+    (design doc A5.2).
     """
     h, w = background.shape
-    # Sub-sample to keep things fast; vignetting is a slow radial function.
     step = max(1, min(h, w) // 128)
     z = background[::step, ::step].astype(np.float64)
     yy, xx = np.mgrid[0 : z.shape[0], 0 : z.shape[1]]
@@ -140,16 +154,89 @@ def detect_vignetting(background: np.ndarray) -> VignettingResult:
 
     z_flat = z.ravel()
     r_flat = r.ravel()
-    p0 = [float(z_flat.max()), 0.05, 2.0]
+
+    if segmentation is not None:
+        seg_ds = segmentation[::step, ::step]
+        mask_flat = (seg_ds.ravel() == SEG_BACKGROUND)
+        kept = int(mask_flat.sum())
+        if kept >= 200:
+            z_flat = z_flat[mask_flat]
+            r_flat = r_flat[mask_flat]
+        else:
+            log.warning(
+                "vignetting fit: only %d background pixels after masking, "
+                "falling back to unmasked fit (results may be biased by target)",
+                kept,
+            )
+
+    if z_flat.size < 10:
+        return VignettingResult(
+            fit_succeeded=False,
+            center_to_corner_falloff=float("nan"),
+            radial_amplitude=float("nan"),
+            radial_power=float("nan"),
+        )
+
+    # ---- Robust shell-p10 fit ---------------------------------------------- #
+    # For nebula-centered images, the inner shells have NO true sky pixels —
+    # the entire inner field is target. Detect this by comparing each shell's
+    # p10 against the median of the outer shells; shells more than 1.5x the
+    # outer median are excluded as "no sky here, only target leakage". This
+    # makes the fit measure genuine optical vignetting in the regions where
+    # sky exists, instead of misreading target brightness as falloff.
+    n_shells = 16
+    shell_edges = np.linspace(0.0, 1.0, n_shells + 1)
+    shell_r_all: list[float] = []
+    shell_v_all: list[float] = []
+    for i in range(n_shells):
+        in_shell = (r_flat >= shell_edges[i]) & (r_flat < shell_edges[i + 1])
+        if int(in_shell.sum()) < 20:
+            continue
+        shell_r_all.append((shell_edges[i] + shell_edges[i + 1]) / 2.0)
+        shell_v_all.append(float(np.percentile(z_flat[in_shell], 10)))
+
+    if len(shell_r_all) < 4:
+        log.warning("vignetting fit: only %d shells with enough pixels", len(shell_r_all))
+        return VignettingResult(
+            fit_succeeded=False,
+            center_to_corner_falloff=float("nan"),
+            radial_amplitude=float("nan"),
+            radial_power=float("nan"),
+        )
+
+    # Outer-shell baseline: median of shells with r >= 0.5.
+    outer = [(rr, vv) for rr, vv in zip(shell_r_all, shell_v_all) if rr >= 0.5]
+    if len(outer) >= 3:
+        outer_median = float(np.median([vv for _, vv in outer]))
+        # Drop inner shells whose p10 exceeds 1.5x the outer baseline — those
+        # are dominated by target leakage, not sky.
+        kept = [
+            (rr, vv) for rr, vv in zip(shell_r_all, shell_v_all)
+            if rr >= 0.5 or vv <= 1.5 * outer_median
+        ]
+        if len(kept) >= 4:
+            shell_r = [rr for rr, _ in kept]
+            shell_v = [vv for _, vv in kept]
+        else:
+            # Too few clean inner shells; fit on outer-only.
+            shell_r = [rr for rr, _ in outer]
+            shell_v = [vv for _, vv in outer]
+    else:
+        shell_r = shell_r_all
+        shell_v = shell_v_all
+
+    sr = np.asarray(shell_r)
+    sv = np.asarray(shell_v)
+    p0 = [float(sv[0]), max(float(sv[0] - sv[-1]), 0.001), 2.0]
 
     try:
         popt, _ = optimize.curve_fit(
             _radial_falloff,
-            r_flat,
-            z_flat,
+            sr,
+            sv,
             p0=p0,
             bounds=([-np.inf, 0.0, 0.5], [np.inf, np.inf, 6.0]),
-            maxfev=200,
+            maxfev=400,
         )
         center, amp, power = popt
         center_val = float(center)
@@ -158,6 +245,10 @@ def detect_vignetting(background: np.ndarray) -> VignettingResult:
             falloff = 0.0
         else:
             falloff = float((center_val - corner_val) / abs(center_val))
+        # Vignetting can only DARKEN the corners; a positive amp with corner < center
+        # means falloff is positive. If the fit produces a negative falloff (rare,
+        # would mean corners brighter than center), clamp to 0 — that's not vignetting.
+        falloff = max(0.0, falloff)
         return VignettingResult(
             fit_succeeded=True,
             center_to_corner_falloff=falloff,
@@ -209,7 +300,7 @@ def measure_color_balance(
 
 def assess_calibration(chars: ImageCharacterization) -> CalibrationAssessment:
     grad = measure_gradient(chars.background, chars.rms)
-    vig = detect_vignetting(chars.background)
+    vig = detect_vignetting(chars.background, chars.segmentation)
     cb = measure_color_balance(chars.color, chars.segmentation)
     log.info(
         "A5: gradient ratio %.2f, vignetting falloff %.3f, color dev %.4f",

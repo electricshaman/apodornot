@@ -139,6 +139,7 @@ class ChatRequest(BaseModel):
     scorecard: dict[str, Any]
     messages: list[ChatMessage]
     image_path: str | None = None
+    equipment_context: str | None = None
     archive_dir: str = "apod_archive"
 
 
@@ -158,6 +159,7 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                 scorecard=req.scorecard,
                 messages=messages,
                 image_path=req.image_path,
+                equipment_context=req.equipment_context,
                 archive_dir=req.archive_dir,
                 max_tokens=2048,
             ):

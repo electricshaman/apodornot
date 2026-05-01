@@ -155,7 +155,11 @@ guess about what a metric measures.
 """
 
 
-def _system_prompt(scorecard: dict[str, Any], reference_entries: list[dict]) -> str:
+def _system_prompt(
+    scorecard: dict[str, Any],
+    reference_entries: list[dict],
+    equipment_context: str | None = None,
+) -> str:
     if reference_entries:
         ref_lines = [
             f"  - {e.get('date', '?')}  {e.get('title', '')}"
@@ -166,10 +170,25 @@ def _system_prompt(scorecard: dict[str, Any], reference_entries: list[dict]) -> 
             ref_summary += f"\n  ... and {len(reference_entries) - 10} more"
     else:
         ref_summary = " (none available)"
-    return SYSTEM_TEMPLATE.format(
+
+    base = SYSTEM_TEMPLATE.format(
         scorecard_json=json.dumps(scorecard, indent=2),
         reference_summary=ref_summary,
     )
+
+    if equipment_context and equipment_context.strip():
+        equip_block = (
+            "\n\n# Equipment context (provided by the user)\n\n"
+            "Use this to reason about whether a metric reading is plausible "
+            "given the actual setup (e.g., a small refractor on a strain-wave "
+            "mount won't have meaningful vignetting or tracking error). Trust "
+            "the equipment over the metric when they conflict and the metric is "
+            "known to be biased for the target type.\n\n"
+            f"```\n{equipment_context.strip()}\n```"
+        )
+        base = base + equip_block
+
+    return base
 
 
 # ---------------------------------------------------------------------------- #
@@ -294,6 +313,7 @@ async def stream_chat(
     scorecard: dict[str, Any],
     messages: list[dict[str, Any]],
     image_path: str | None = None,
+    equipment_context: str | None = None,
     archive_dir: str = "apod_archive",
     model: str = DEFAULT_MODEL,
     max_tokens: int = 2048,
@@ -324,7 +344,7 @@ async def stream_chat(
         log.warning("reference index lookup failed: %s", exc)
         reference_entries = []
 
-    system = _system_prompt(scorecard, reference_entries)
+    system = _system_prompt(scorecard, reference_entries, equipment_context)
     history = [dict(m) for m in messages]  # avoid mutating caller's list
 
     # Attach the image to the first user turn so Claude sees the actual photo,

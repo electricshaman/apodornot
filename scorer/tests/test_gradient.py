@@ -67,6 +67,51 @@ def test_detect_vignetting_flat_returns_zero_falloff():
     assert abs(v.center_to_corner_falloff) < 0.05
 
 
+def test_detect_vignetting_segmentation_excludes_target():
+    """A flat sky with a bright central target should NOT register as vignetting
+    when the segmentation mask is provided."""
+    from apodornot.image_chars import SEG_BACKGROUND, SEG_TARGET
+
+    h = w = 512
+    sigma = 20
+    bg = np.full((h, w), 0.2, dtype=np.float32)
+    # Inject a bright Gaussian target in the center of the background map
+    yy, xx = np.mgrid[0:h, 0:w]
+    bg = bg + 0.5 * np.exp(-((xx - w/2)**2 + (yy - h/2)**2) / (2 * sigma**2)).astype(np.float32)
+
+    # Without masking: the shell-p10 fit's adaptive inner-shell exclusion
+    # already rejects the bright center as "no sky here," so even unmasked we
+    # get a relatively low reading. Masking should make it lower still.
+    v_unmasked = detect_vignetting(bg)
+
+    # With masking: target pixels excluded → reports near-zero vignetting.
+    # Mask covers ~6σ of the Gaussian so no signal leaks into the kept pixels.
+    seg = np.full((h, w), SEG_BACKGROUND, dtype=np.uint8)
+    target_mask = np.sqrt((xx - w/2)**2 + (yy - h/2)**2) < 6 * sigma
+    seg[target_mask] = SEG_TARGET
+    v_masked = detect_vignetting(bg, seg)
+    assert abs(v_masked.center_to_corner_falloff) < 0.05
+    # Masking should reduce the (small) bias from the unmasked fit.
+    assert v_masked.center_to_corner_falloff <= v_unmasked.center_to_corner_falloff + 0.01
+
+
+def test_detect_vignetting_real_radial_falloff_still_detected_with_mask():
+    """A genuine radial falloff (real vignetting) is still detected when a
+    segmentation mask is provided."""
+    from apodornot.image_chars import SEG_BACKGROUND
+
+    h = w = 256
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
+    r = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2) / np.hypot(cx, cy)
+    bg = (1.0 - 0.2 * r * r).astype(np.float32)
+
+    seg = np.full((h, w), SEG_BACKGROUND, dtype=np.uint8)
+    v = detect_vignetting(bg, seg)
+    assert v.fit_succeeded
+    assert 0.10 < v.center_to_corner_falloff < 0.30
+
+
 # ---------------------------------------------------------------------------- #
 # Color balance
 # ---------------------------------------------------------------------------- #
