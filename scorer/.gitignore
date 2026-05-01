@@ -66,3 +66,6 @@ output/
 .env
 .env.*
 !.env.example
+
+# Claude Code runtime artifacts
+.claude/scheduled_tasks.lock
