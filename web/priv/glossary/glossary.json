@@ -1,0 +1,198 @@
+{
+  "axis.star_quality": {
+    "label": "Star quality",
+    "beginner": "How sharp and round the stars look. Big, fat, or stretched stars hurt this score.",
+    "intermediate": "A composite score across star sharpness (FWHM), roundness (eccentricity), and how consistent those are across the frame. Soft or elongated stars drag it down.",
+    "advanced": "Composite of median FWHM, median eccentricity, and the corner-vs-center FWHM excess. Diagnoses focus, seeing, tracking, and optical-train integrity (coma, tilt, field curvature)."
+  },
+  "axis.noise_management": {
+    "label": "Noise management",
+    "beginner": "Whether the dark sky around your target looks clean and natural, or grainy, plasticky, or smeared.",
+    "intermediate": "Combines the noise floor with the noise's spectral shape and pixel-to-pixel correlation. Aggressive noise reduction shows up here.",
+    "advanced": "Noise floor (per-channel σ on background patches) + PSD shape (high-band suppression as the NR fingerprint) + autocorrelation width (drizzle/resampling smearing) + target-region SNR."
+  },
+  "axis.detail_resolution": {
+    "label": "Detail resolution",
+    "beginner": "How much real fine structure your image resolves — without faking it.",
+    "intermediate": "Measures how power falls off with spatial frequency in the target region. Real astronomical detail follows a smooth power law; sharpening artifacts show up as bumps.",
+    "advanced": "Radial power spectrum of the windowed target FFT. Power-law slope + the knee where power flattens into noise. Compared against the PSF-implied diffraction cutoff to flag oversharpening."
+  },
+  "axis.gradient_control": {
+    "label": "Gradient control",
+    "beginner": "Whether the sky background is even, or has bright/dark patches across the frame.",
+    "intermediate": "Quantifies sky gradient (large-scale background tilt) and residual vignetting (corner darkening) — both signs of imperfect calibration or light pollution.",
+    "advanced": "Polynomial surface fit on the SEP background map (peak-to-peak in noise units) + radial-falloff fit on background-mask pixels (shell-p10 robust against bright targets)."
+  },
+  "axis.color_calibration": {
+    "label": "Color calibration",
+    "beginner": "Are the colors realistic and varied, or has processing crushed them all to gray?",
+    "intermediate": "Star-color diversity (matching real stellar B–V variation), background neutrality (no color cast), and per-channel balance.",
+    "advanced": "Star RGB ratio diversity vs B–V reference, background chromaticity distance from neutral, per-channel balance, plus narrowband palette detection (SHO/HOO/natural)."
+  },
+
+  "fwhm": {
+    "label": "FWHM (full width at half maximum)",
+    "beginner": "How fat your stars are, in pixels. Smaller = sharper.",
+    "intermediate": "The width of a star's brightness profile at half its peak intensity. Measured in pixels; sets a hard floor on how much detail the image can resolve.",
+    "advanced": "Full-width-at-half-maximum of the per-star fitted Moffat profile. Geometric mean of FWHM_a (major axis) and FWHM_b (minor axis). Drives the optical-system point spread function characterization."
+  },
+  "eccentricity": {
+    "label": "Eccentricity",
+    "beginner": "How stretched (vs round) your stars are. 0 = perfectly round, near 1 = very streaky.",
+    "intermediate": "Per-star ratio of the minor axis to the major axis, expressed as sqrt(1 − (b/a)²). Patterns across the frame diagnose tracking vs. optics.",
+    "advanced": "From the Moffat fit's (a, b) parameters: ecc = sqrt(1 − (b/a)²). Field-wide patterns analyzed via double-angle weighted mean resultant length R + radial alignment score against the field center."
+  },
+  "psd": {
+    "label": "Power spectral density (PSD)",
+    "beginner": "A graph showing how 'busy' your image is at small vs large scales. Used to fingerprint processing.",
+    "intermediate": "A frequency-domain decomposition: how much power exists at each spatial scale. Different processing steps (NR, sharpening) leave characteristic signatures here.",
+    "advanced": "|FFT(image)|² azimuthally averaged into a 1D radial profile. White noise → flat. Suppressed mid/high frequencies → noise reduction. Boosted high frequencies → oversharpening."
+  },
+  "mtf50": {
+    "label": "MTF50 / effective resolution",
+    "beginner": "The smallest detail your image actually preserves. Lower = sharper image.",
+    "intermediate": "The spatial frequency at which the image's modulation transfer function drops to half its peak. A standard sharpness benchmark.",
+    "advanced": "Modulation Transfer Function at 50% — the frequency where image contrast is halved from DC. Computed from the radial PSD's knee, comparable across systems."
+  },
+  "snr": {
+    "label": "SNR (signal-to-noise ratio)",
+    "beginner": "How much real signal there is vs random noise. Higher = cleaner image.",
+    "intermediate": "Ratio of signal level to noise level — usually expressed in target regions, where you care about it most. More integration time is the most direct way to improve it.",
+    "advanced": "Per-pixel signal (background-subtracted luminance) divided by local noise (from the SEP RMS map). Reported as median + p90 over segmentation target pixels."
+  },
+  "autocorrelation": {
+    "label": "Noise autocorrelation",
+    "beginner": "Measures how 'lumpy' the noise is. Tight grain = good. Smeared blobs = something smoothed your image too much.",
+    "intermediate": "How correlated each noise pixel is with its neighbors. True shot noise is uncorrelated (1-pixel wide); drizzle, resampling, or NR widens the correlation peak.",
+    "advanced": "FFT-based autocorrelation of background patches. Half-max half-width measured in pixels. A width >> 1 px is a direct signature of pixel-level smearing from drizzle, bicubic resampling, or wavelet NR."
+  },
+  "gradient_ratio": {
+    "label": "Gradient ratio",
+    "beginner": "How uneven your sky background is, scaled to your noise. >3× is noticeable, >10× is bad.",
+    "intermediate": "Peak-to-peak of a low-order polynomial fit to the background, normalized by the noise floor. Flags light-pollution gradients and bad flats.",
+    "advanced": "Peak-to-peak of a 2nd-order polynomial surface fitted to the SEP background map, divided by the median local RMS. The normalization makes it scale-invariant; rule of thumb 3× ≈ visible, 10× ≈ serious."
+  },
+  "vignetting": {
+    "label": "Vignetting",
+    "beginner": "When the corners of your image look dimmer than the center because of optics or bad flat frames.",
+    "intermediate": "Radial brightness falloff from the center to the corners. Real residual vignetting after calibration usually means flats don't match the current optical setup.",
+    "advanced": "Radial-falloff model fitted to background-mask pixels using shell-p10 robust binning (so a bright central target isn't misread as 'center brightness'). Reports center-to-corner percentage."
+  },
+  "psf": {
+    "label": "PSF (point spread function)",
+    "beginner": "The shape your optics turn a single point of light into. A perfect telescope would make a tiny dot; real ones spread it out a bit.",
+    "intermediate": "How a point source (a star) gets blurred by the atmosphere + optics + tracking + sensor sampling. Its width sets your image's resolution ceiling.",
+    "advanced": "The system's response to an idealized point input. Modeled per-star with a Moffat profile (better wings than Gaussian). Sets the diffraction-limited cutoff frequency (~1/FWHM_px) above which target detail can't be physically real."
+  },
+
+  "vector_field": {
+    "label": "Eccentricity vector field",
+    "beginner": "A map showing each star as a tiny tick. The direction and length of the tick tells you how stretched the star is.",
+    "intermediate": "Each tick is a fitted star. Length encodes eccentricity, orientation encodes the major-axis position angle. Patterns across the frame diagnose the source of star elongation.",
+    "advanced": "Per-star (x, y, ecc, PA) plotted as line segments. Uniform tick orientation = uniform_drift (RA tracking PE); radial outward pattern = optical aberration (coma/tilt/field curvature); random orientation = atmospheric seeing."
+  },
+  "position_angle": {
+    "label": "Position angle (PA)",
+    "beginner": "Which direction a star's stretching points — like the direction of an arrow.",
+    "intermediate": "The angle of a star's major-axis elongation, measured CCW from the +x axis. When all stars share a PA, the cause is mechanical (tracking, drift); when PAs vary radially, it's optical.",
+    "advanced": "Position angle of the fitted Moffat ellipse's major axis. Aggregated as a double-angle weighted mean (so the 0°/180° symmetry doesn't cancel) for the field-pattern classification."
+  },
+  "tracking_error": {
+    "label": "Tracking error / periodic error",
+    "beginner": "When the mount can't keep your scope perfectly pointed, stars trail in one direction.",
+    "intermediate": "The mount's mechanical error in following the sky's rotation. Repetitive deviations are 'periodic error'; visible as stars elongated in one consistent direction across the whole frame.",
+    "advanced": "Sub-arcsecond mechanical periodicity in the worm/spur gear (or strain-wave equivalent) of an EQ mount. Manifests as a uniform_drift eccentricity pattern in the field. Mitigation: PEC, autoguiding with adequate cadence, or strain-wave mounts."
+  },
+  "optical_aberration": {
+    "label": "Optical aberration",
+    "beginner": "When the lens/mirror can't focus light cleanly, stars look distorted — usually worse at the corners.",
+    "intermediate": "Imperfect optics that distort star shapes systematically. The most common ones for astrophotography are coma (radial smear) and field curvature (corner softness).",
+    "advanced": "Off-axis aberrations (coma, astigmatism, field curvature, sensor tilt) that produce elongation oriented radially with respect to the optical axis. Show up in the ecc field as a radial pattern with concentration > 0.4."
+  },
+  "random_seeing": {
+    "label": "Random seeing",
+    "beginner": "When the air above your scope is turbulent, it stretches stars in random directions — not your scope's fault.",
+    "intermediate": "Atmospheric turbulence on the night you imaged. Affects FWHM and eccentricity but with no consistent direction across the frame.",
+    "advanced": "Random-direction eccentricity pattern (low double-angle mean resultant length R, low radial-alignment score). Atmosphere-driven, not equipment. Lever: subframe weighting / culling, not autoguiding."
+  },
+  "coma": {
+    "label": "Coma",
+    "beginner": "An optical defect that makes stars near the edges of your image look like little comets pointing outward.",
+    "intermediate": "An off-axis aberration where stars elongate radially outward from the field center, especially in fast Newtonians without a coma corrector.",
+    "advanced": "Off-axis third-order aberration producing radial PA elongation that grows with field angle. Mitigation: coma corrector matched to focal ratio + image circle."
+  },
+  "moffat": {
+    "label": "Moffat profile",
+    "beginner": "A math curve we fit to each star to measure its size. Better at modeling real stars than the simpler 'bell curve'.",
+    "intermediate": "A 2D model commonly used to describe star light profiles in real imaging. Fits both the bright core and the faint wings better than a Gaussian.",
+    "advanced": "f(r) = amp · (1 + (r/α)²)^(−β) · 2D anisotropic with a constant floor. β governs wing steepness; FWHM = 2α·sqrt(2^(1/β) − 1). Preferred over Gaussian for non-diffraction-limited PSFs."
+  },
+  "azimuthal_average": {
+    "label": "Azimuthally averaged",
+    "beginner": "Means we averaged the same distance from the center in all directions to make a 1D graph from a 2D image.",
+    "intermediate": "Collapsing a 2D quantity (like a PSD) into a 1D radial profile by averaging all points the same distance from the center.",
+    "advanced": "Radial binning + per-bin mean of a 2D field, typically applied to |FFT|² to yield the radial power spectrum. Loses anisotropic information but enables 1D power-law fitting."
+  },
+  "color_magnitude_diagram": {
+    "label": "Color–magnitude diagram (CMD)",
+    "beginner": "A scatter plot of stars where position tells you each star's color and brightness. Used to check that color survived processing.",
+    "intermediate": "Each dot is a star, plotted by its color index (B−V proxy) vs apparent magnitude. A healthy spread along the main sequence indicates good color preservation.",
+    "advanced": "Stellar color-magnitude diagram built from per-star RGB ratios (log10(R/B) as a B−V proxy) and instrumental magnitudes (−2.5·log10(total flux)). Color collapse to a vertical line indicates color information was crushed."
+  },
+  "bv_index": {
+    "label": "B–V color index",
+    "beginner": "A number that tells you a star's color — small and negative for blue stars, large and positive for red stars.",
+    "intermediate": "A star's brightness in the blue filter minus its brightness in the visual filter — astronomy's standard color label, ranging from ~ −0.3 (hot blue) to ~ +1.8 (cool red).",
+    "advanced": "Photometric color index B − V (Johnson-Cousins). Correlates with stellar effective temperature; used as the photometric ground truth for evaluating star-color preservation in processed images."
+  },
+
+  "percentile": {
+    "label": "Percentile",
+    "beginner": "Your rank out of 100 compared to other images. 70 means you're better than 70 out of 100.",
+    "intermediate": "Where your value falls in the distribution of reference images. Direction-corrected here, so 100 = best regardless of metric.",
+    "advanced": "Direction-corrected percentile rank against the chosen APOD reference set. Always 100 = best (the pipeline inverts for lower-is-better metrics like FWHM and gradient_ratio)."
+  },
+  "p10": {
+    "label": "p10 / 10th percentile",
+    "beginner": "The value below which only 10% of the reference images fall. Useful as a 'top-tier' threshold.",
+    "intermediate": "10% of the reference distribution is at or below this value. The lower-tail benchmark for distributions where lower is better.",
+    "advanced": "10th percentile of the per-category reference distribution for this metric. Used in the quantile box plot as the lower whisker; outer-shell baseline for the vignetting fit also uses p10."
+  },
+  "p50": {
+    "label": "p50 / median",
+    "beginner": "The middle value — half the reference images are above this, half below.",
+    "intermediate": "The median of the reference distribution. Exactly half of comparison images score better, half worse.",
+    "advanced": "50th percentile (median) of the reference distribution. Robust central tendency estimator. The radar chart's 50-mark on each axis."
+  },
+  "p90": {
+    "label": "p90 / 90th percentile",
+    "beginner": "The value below which 90% of reference images fall — a 'top 10%' threshold.",
+    "intermediate": "90% of comparison images score at or below this value. Useful as the 'aspirational' end of the distribution.",
+    "advanced": "90th percentile of the reference distribution. Upper whisker on quantile plots; the high-tail benchmark."
+  },
+
+  "background_sigma": {
+    "label": "Background σ (sigma)",
+    "beginner": "How noisy the dark sky parts of your image are. Lower = cleaner.",
+    "intermediate": "The standard deviation of pixel intensities in background-only regions. The fundamental noise floor of the image.",
+    "advanced": "Sigma-clipped standard deviation of background-mask pixels per channel. The denominator in SNR; set by integration time, sensor read noise, dark current, and sky brightness."
+  },
+  "stellar_chroma": {
+    "label": "Stellar chroma diversity",
+    "beginner": "How much color variety your stars have — blue, white, yellow, orange — vs all looking the same.",
+    "intermediate": "The spread of star colors across the detected population. Healthy images show the full stellar color sequence; over-processed ones collapse everyone to gray.",
+    "advanced": "Mean inter-quartile range of normalized R/G/B ratios across detected stars. Mapped to a 0–1 score; low values flag color information destroyed by saturation, NR-on-chroma, or aggressive white balance."
+  },
+  "background_chroma": {
+    "label": "Background chroma distance",
+    "beginner": "How far your sky background is from a true neutral gray.",
+    "intermediate": "The chromaticity distance of the median background from neutral (1/3, 1/3) in (r, g) space. Catches color casts left over from incomplete calibration.",
+    "advanced": "Euclidean distance of the median background chromaticity from (1/3, 1/3). Independent of overall brightness; flags color casts from filters, sensors, or skipped background-neutralization steps."
+  },
+  "channel_balance": {
+    "label": "Channel balance",
+    "beginner": "Whether your red, green, and blue channels are balanced or one dominates.",
+    "intermediate": "How far the per-channel background means deviate from each other after normalization. Big deviations indicate color calibration is off.",
+    "advanced": "Magnitude of the (R, G, B) deviation vector from the per-channel mean, normalized by the average background level. Catches color casts and unbalanced flats."
+  }
+}

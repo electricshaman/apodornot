@@ -2,7 +2,7 @@ defmodule ApodornotWebWeb.ScoreLive do
   use ApodornotWebWeb, :live_view
 
   alias ApodornotWeb.{ChatRunner, PipelineRunner, SubmissionStore}
-  alias ApodornotWebWeb.AxisDiagnostics
+  alias ApodornotWebWeb.{AxisDiagnostics, Glossary}
   alias Phoenix.PubSub
 
   @pubsub ApodornotWeb.PubSub
@@ -35,7 +35,11 @@ defmodule ApodornotWebWeb.ScoreLive do
        chat_draft: "",
        # Findings panel collapsed by default — the chat is the primary review;
        # findings is the deterministic fallback for note-taking / no-LLM use.
-       findings_collapsed: true
+       findings_collapsed: true,
+       # Glossary state — clicking a jargon term in the drawer opens the
+       # explanation panel at the bottom; level toggle picks the depth.
+       selected_term: nil,
+       glossary_level: "intermediate"
      )
      |> stream_configure(:stages, dom_id: &"stage-#{&1["stage"]}")
      |> stream(:stages, [])}
@@ -146,6 +150,18 @@ defmodule ApodornotWebWeb.ScoreLive do
     {:noreply, assign(socket, :findings_collapsed, !socket.assigns.findings_collapsed)}
   end
 
+  def handle_event("select_term", %{"term" => term_id}, socket) do
+    {:noreply, assign(socket, :selected_term, term_id)}
+  end
+
+  def handle_event("close_term", _, socket) do
+    {:noreply, assign(socket, :selected_term, nil)}
+  end
+
+  def handle_event("set_glossary_level", %{"level" => level}, socket) when level in ~w(beginner intermediate advanced) do
+    {:noreply, assign(socket, :glossary_level, level)}
+  end
+
   def handle_event("update_draft", %{"chat" => %{"draft" => draft}}, socket) do
     {:noreply, assign(socket, :chat_draft, draft)}
   end
@@ -213,6 +229,8 @@ defmodule ApodornotWebWeb.ScoreLive do
               image_filename={@image_filename}
               selected_axis={@selected_axis}
               findings_collapsed={@findings_collapsed}
+              selected_term={@selected_term}
+              glossary_level={@glossary_level}
             />
           <% true -> %>
             <.loading_view stages={@streams.stages} />
@@ -285,6 +303,8 @@ defmodule ApodornotWebWeb.ScoreLive do
         :if={@selected_axis}
         axis={@selected_axis}
         scorecard={@scorecard}
+        selected_term={@selected_term}
+        glossary_level={@glossary_level}
       />
     </div>
     """
@@ -490,17 +510,20 @@ defmodule ApodornotWebWeb.ScoreLive do
   defp stage_drawer(assigns) do
     ~H"""
     <div class="fixed inset-0 z-30 bg-black/55" phx-click="close_drawer"></div>
-    <aside class="fixed top-0 right-0 bottom-0 w-[min(620px,100vw)] bg-slate-900 border-l border-slate-800 z-40 overflow-y-auto">
-      <div class="p-6 border-b border-slate-800 flex justify-between items-center">
+    <aside class="fixed top-0 right-0 bottom-0 w-[min(620px,100vw)] bg-slate-900 border-l border-slate-800 z-40 flex flex-col">
+      <div class="p-6 border-b border-slate-800 flex justify-between items-center shrink-0">
         <div>
           <div class="font-mono text-[10px] uppercase tracking-widest text-slate-500 mb-1">axis</div>
-          <div class="text-lg font-medium">{@axis}</div>
+          <div class="text-lg font-medium">
+            <Glossary.term id={axis_term_id(@axis)}>{@axis}</Glossary.term>
+          </div>
         </div>
         <button phx-click="close_drawer" class="text-slate-500 hover:text-slate-200 font-mono text-sm">
           close
         </button>
       </div>
-      <div class="p-6 space-y-6">
+
+      <div class="flex-1 overflow-y-auto p-6 space-y-6">
         <%
           axis_data = Enum.find(@scorecard["axes"], &(&1["axis"] == @axis))
           components = (axis_data && axis_data["components"]) || []
@@ -517,6 +540,7 @@ defmodule ApodornotWebWeb.ScoreLive do
             <%= for c <- components, m = Enum.find(all_metrics, &(&1["metric"] == c["metric"])), m do %>
               <AxisDiagnostics.quantile_chart
                 metric={c["metric"]}
+                label={c["label"] || c["metric"]}
                 value={c["value"]}
                 percentile={c["percentile"]}
                 higher_is_better={c["higher_is_better"]}
@@ -526,9 +550,19 @@ defmodule ApodornotWebWeb.ScoreLive do
           </div>
         </div>
       </div>
+
+      <Glossary.explanation_panel selected_term_id={@selected_term} level={@glossary_level} />
     </aside>
     """
   end
+
+  # Map an axis display name to its glossary term id.
+  defp axis_term_id("Star quality"),       do: "axis.star_quality"
+  defp axis_term_id("Noise management"),   do: "axis.noise_management"
+  defp axis_term_id("Detail resolution"),  do: "axis.detail_resolution"
+  defp axis_term_id("Gradient control"),   do: "axis.gradient_control"
+  defp axis_term_id("Color calibration"),  do: "axis.color_calibration"
+  defp axis_term_id(_),                    do: nil
 
   defp chat_sidebar(assigns) do
     ~H"""

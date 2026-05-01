@@ -137,7 +137,7 @@ defmodule ApodornotWebWeb.UploadLive do
           <details class="group" phx-mounted={Phoenix.LiveView.JS.ignore_attributes(["open"])}>
             <summary class="font-mono text-xs uppercase tracking-widest text-slate-500 cursor-pointer hover:text-slate-300 select-none flex items-center gap-2">
               <span class="inline-block transition-transform group-open:rotate-90">▸</span>
-              equipment context (optional)
+              additional context — equipment, integration, processing (optional)
             </summary>
             <div class="mt-3 space-y-2">
               <textarea

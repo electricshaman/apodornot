@@ -19,7 +19,30 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
 
   use Phoenix.Component
 
+  alias ApodornotWebWeb.Glossary
+
   @accent "#7dd3fc"
+
+  # Map raw metric keys to glossary term ids so the per-component label in the
+  # quantile chart links to its definition.
+  @metric_to_term %{
+    "median_fwhm_px" => "fwhm",
+    "median_eccentricity" => "eccentricity",
+    "fwhm_corner_excess" => "fwhm",
+    "noise_floor_l" => "background_sigma",
+    "psd_spectral_slope" => "psd",
+    "psd_high_band_suppression" => "psd",
+    "autocorr_width_px" => "autocorrelation",
+    "snr_target_median" => "snr",
+    "target_spectral_slope" => "psd",
+    "target_effective_resolution" => "mtf50",
+    "gradient_ratio" => "gradient_ratio",
+    "vignetting_falloff" => "vignetting",
+    "color_balance_magnitude" => "channel_balance",
+    "color_overall_score" => "axis.color_calibration",
+    "star_diversity_score" => "stellar_chroma",
+    "background_chroma_distance" => "background_chroma"
+  }
 
   # ------------------------------------------------------------------------ #
   # Top-level dispatch
@@ -46,16 +69,25 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
   # ------------------------------------------------------------------------ #
 
   attr :title, :string, required: true
+  attr :title_term, :string, default: nil
   attr :subtitle, :string, default: nil
   slot :inner_block, required: true
+  slot :subtitle_block
 
   defp diag_frame(assigns) do
     ~H"""
     <div class="border border-slate-800 bg-slate-900/30 p-4 rounded">
       <div class="font-mono text-[10px] uppercase tracking-widest text-slate-500">
-        {@title}
+        <%= if @title_term do %>
+          <Glossary.term id={@title_term}>{@title}</Glossary.term>
+        <% else %>
+          {@title}
+        <% end %>
       </div>
-      <div :if={@subtitle} class="text-slate-400 text-xs mt-1 mb-3 leading-relaxed">
+      <div :if={@subtitle_block != []} class="text-slate-400 text-xs mt-1 mb-3 leading-relaxed">
+        {render_slot(@subtitle_block)}
+      </div>
+      <div :if={@subtitle && @subtitle_block == []} class="text-slate-400 text-xs mt-1 mb-3 leading-relaxed">
         {@subtitle}
       </div>
       <div class="mt-2">
@@ -125,10 +157,14 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
     assigns = assign(assigns, w: w, h: h, cells: cells, accent: @accent, label: label)
 
     ~H"""
-    <.diag_frame
-      title="Eccentricity vector field"
-      subtitle="Each tick = one fitted star. Length encodes eccentricity, orientation encodes major-axis. Uniform direction across the field = tracking error; radial pattern = optical aberration; random = atmospheric seeing."
-    >
+    <.diag_frame title="Eccentricity vector field" title_term="vector_field">
+      <:subtitle_block>
+        Each tick = one fitted star. Length encodes <Glossary.term id="eccentricity">eccentricity</Glossary.term>,
+        orientation encodes the <Glossary.term id="position_angle">major-axis position angle</Glossary.term>.
+        Uniform direction across the field = <Glossary.term id="tracking_error">tracking error</Glossary.term>;
+        radial pattern = <Glossary.term id="optical_aberration">optical aberration</Glossary.term>;
+        random = <Glossary.term id="random_seeing">atmospheric seeing</Glossary.term>.
+      </:subtitle_block>
       <svg viewBox={"0 0 #{@w} #{@h}"} class="w-full block">
         <rect width={@w} height={@h} fill="rgba(255,255,255,0.015)" />
         <line x1={@w/2} y1="0" x2={@w/2} y2={@h} stroke="rgba(255,255,255,0.05)" />
@@ -198,10 +234,12 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
     assigns = assign(assigns, w: w, h: h, channels: paths)
 
     ~H"""
-    <.diag_frame
-      title="Background noise distribution · per channel"
-      subtitle="Histogram of background-pixel intensities, shown as the fitted Gaussian per channel. Tight, well-aligned curves = controlled noise; wide spread or shifted means = calibration issues."
-    >
+    <.diag_frame title="Background noise distribution · per channel">
+      <:subtitle_block>
+        Per-channel <Glossary.term id="background_sigma">background σ</Glossary.term> shown as the
+        fitted Gaussian. Tight, well-aligned curves = controlled noise;
+        wide spread or shifted means = calibration issues.
+      </:subtitle_block>
       <svg viewBox={"0 0 #{@w} #{@h}"} class="w-full block">
         <rect width={@w} height={@h} fill="rgba(255,255,255,0.015)" />
         <line x1="0" y1={@h - 24} x2={@w} y2={@h - 24} stroke="rgba(255,255,255,0.12)" />
@@ -279,10 +317,13 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
     )
 
     ~H"""
-    <.diag_frame
-      title="Radial power spectrum"
-      subtitle={"Log-log power vs spatial frequency. Real astronomical detail follows a power-law falloff (slope #{format_num(@slope)}); the knee where power flattens marks the effective resolution."}
-    >
+    <.diag_frame title="Radial power spectrum" title_term="psd">
+      <:subtitle_block>
+        Log-log power vs spatial frequency from the <Glossary.term id="azimuthal_average">azimuthally averaged</Glossary.term> 2D FFT.
+        Real detail follows a power-law falloff (slope {format_num(@slope)});
+        the knee where power flattens marks the
+        <Glossary.term id="mtf50">effective resolution</Glossary.term>.
+      </:subtitle_block>
       <svg viewBox={"0 0 #{@w} #{@h}"} class="w-full block">
         <rect width={@w} height={@h} fill="rgba(255,255,255,0.015)" />
         <g :for={d <- 0..3}>
@@ -339,10 +380,12 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
     assigns = assign(assigns, w: w, h: h, cells: cells, range_label: range_label)
 
     ~H"""
-    <.diag_frame
-      title="Background flatness map"
-      subtitle="Downsampled SEP background model after foreground masking. Smooth color = flat sky. Strong gradient = uncorrected flat field, light pollution, or vignetting."
-    >
+    <.diag_frame title="Background flatness map">
+      <:subtitle_block>
+        Downsampled SEP background model after foreground masking. Smooth
+        color = flat sky. Strong <Glossary.term id="gradient_ratio">gradient</Glossary.term> = uncorrected
+        flat field or light pollution; corner darkening = <Glossary.term id="vignetting">vignetting</Glossary.term>.
+      </:subtitle_block>
       <svg viewBox={"0 0 #{@w} #{@h}"} class="w-full block">
         <rect width={@w} height={@h} fill="#000" />
         <rect :for={c <- @cells} x={c.x} y={c.y} width={c.w} height={c.h} fill={c.color} />
@@ -413,10 +456,13 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
       bv_min: bv_min, bv_max: bv_max, mag_min: mag_min, mag_max: mag_max)
 
     ~H"""
-    <.diag_frame
-      title="Stellar color–magnitude diagram"
-      subtitle="Each dot = one detected star, colored by its measured RGB. Position is log10(R/B) (color index proxy) vs instrumental magnitude. Healthy spread = good color preservation; cluster collapse = color destroyed in processing."
-    >
+    <.diag_frame title="Stellar color–magnitude diagram" title_term="color_magnitude_diagram">
+      <:subtitle_block>
+        Each dot = one detected star, colored by its measured RGB. Position is
+        log10(R/B) (a <Glossary.term id="bv_index">B–V color index</Glossary.term> proxy) vs instrumental magnitude.
+        Healthy spread = good <Glossary.term id="stellar_chroma">stellar chroma</Glossary.term>;
+        cluster collapse = color destroyed in processing.
+      </:subtitle_block>
       <svg viewBox={"0 0 #{@w} #{@h}"} class="w-full block">
         <rect width={@w} height={@h} fill="rgba(255,255,255,0.015)" />
         <line x1="40" y1={@h - 30} x2={@w - 10} y2={@h - 30} stroke="rgba(255,255,255,0.18)" />
@@ -444,6 +490,7 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
   # ------------------------------------------------------------------------ #
 
   attr :metric, :string, required: true
+  attr :label, :string, default: nil
   attr :value, :any, required: true
   attr :percentile, :float, required: true
   attr :higher_is_better, :boolean, required: true
@@ -478,21 +525,29 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
       lbl_p50: format_num(p50),
       lbl_p90: format_num(p90),
       lbl_value: format_num(value),
-      accent: @accent
+      accent: @accent,
+      term_id: Map.get(@metric_to_term, assigns.metric),
+      display_label: assigns.label || assigns.metric
     )
 
     ~H"""
     <div class="border border-slate-800 rounded p-4">
       <div class="flex justify-between items-baseline mb-2">
-        <div class="text-slate-100 text-sm font-medium">{@metric}</div>
+        <div class="text-slate-100 text-sm font-medium">
+          <%= if @term_id do %>
+            <Glossary.term id={@term_id}>{@display_label}</Glossary.term>
+          <% else %>
+            {@display_label}
+          <% end %>
+        </div>
         <div class="font-mono text-[10px] text-slate-500">
           {if @higher_is_better, do: "higher better", else: "lower better"}
         </div>
       </div>
       <div class="flex justify-between font-mono text-[11px] text-slate-500 tabular-nums mb-1">
-        <span>p10 {@lbl_p10}</span>
-        <span>p50 {@lbl_p50}</span>
-        <span>p90 {@lbl_p90}</span>
+        <span><Glossary.term id="p10">p10</Glossary.term> {@lbl_p10}</span>
+        <span><Glossary.term id="p50">p50</Glossary.term> {@lbl_p50}</span>
+        <span><Glossary.term id="p90">p90</Glossary.term> {@lbl_p90}</span>
       </div>
       <svg viewBox="0 0 100 22" preserveAspectRatio="none" class="w-full block h-8">
         <rect x={@x_p10} y="9" width={@x_p90 - @x_p10} height="4" fill="rgba(255,255,255,0.08)" />
