@@ -63,6 +63,8 @@ class ImageMetadata:
     clipped_high_fraction: float    # fraction of pixels exactly at the high limit
     histogram_low_percentile: float
     histogram_high_percentile: float
+    file_format: str = "unknown"    # "jpeg" / "png" / "tiff" / "fits"
+    input_domain: str = "unknown"   # "display" (8-bit jpeg/png) | "linear" (FITS, 16-bit master)
     fits_header: dict[str, Any] = field(default_factory=dict)
 
 
@@ -205,6 +207,9 @@ def load_and_normalize(path: str | Path) -> tuple[np.ndarray, np.ndarray | None,
     clipped_high = float(np.mean(luminance >= p_high * 0.9999))
     dyn_range = float(p_high - p_low)
 
+    file_format = _file_format_from_path(path)
+    input_domain = _classify_input_domain(file_format, bit_depth)
+
     metadata = ImageMetadata(
         path=str(path),
         bit_depth=bit_depth,
@@ -216,9 +221,38 @@ def load_and_normalize(path: str | Path) -> tuple[np.ndarray, np.ndarray | None,
         clipped_high_fraction=clipped_high,
         histogram_low_percentile=p_low,
         histogram_high_percentile=p_high,
+        file_format=file_format,
+        input_domain=input_domain,
         fits_header=fits_header,
     )
     return luminance, color, metadata
+
+
+def _file_format_from_path(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in _FITS_SUFFIXES:
+        return "fits"
+    if suffix in (".jpg", ".jpeg"):
+        return "jpeg"
+    if suffix == ".png":
+        return "png"
+    if suffix in (".tif", ".tiff"):
+        return "tiff"
+    return "unknown"
+
+
+def _classify_input_domain(file_format: str, bit_depth: int) -> str:
+    """Classify whether the input is 'display' (matches APOD JPEG reference) or
+    'linear' (FITS / 16-bit master data, much higher quality and *not* what the
+    reference distributions reflect).
+    """
+    if file_format == "fits":
+        return "linear"
+    if file_format == "jpeg":
+        return "display"
+    if file_format in ("png", "tiff"):
+        return "linear" if bit_depth >= 16 else "display"
+    return "unknown"
 
 
 # ---------------------------------------------------------------------------- #

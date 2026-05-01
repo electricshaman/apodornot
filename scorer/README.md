@@ -12,6 +12,16 @@ The measurement pipeline is deterministic. **No LLMs in the evaluation loop.** A
 MCP server (A9) exposes the pipeline as tools that any MCP-compatible LLM client can call
 to handle the natural-language conversation around the results.
 
+> ⚠ **Caveat — reference domain is APOD display JPEGs.** APOD distributes finished,
+> 8-bit JPEG (and rare PNG/TIFF) display images, not linear master data. The bundled
+> reference distributions therefore reflect the look of *processed exports*, including
+> their 8x8 DCT artifacts, chroma subsampling, and 8-bit clipping. Several metrics —
+> `autocorr_width_px`, `psd_high_band_suppression`, `gradient_ratio`, and the color
+> metrics — are biased by this domain. **For comparable scoring, submit an 8-bit JPEG/PNG
+> export of your final processed image, not a linear FITS / 16-bit TIFF master.**
+> The pipeline detects linear/master inputs at evaluation time and emits a domain-mismatch
+> warning on the scorecard, but the underlying reference set hasn't changed.
+
 ## Pipeline
 
 | Stage | Module | Purpose |

@@ -61,6 +61,9 @@ def _scorecard_to_dict(scorecard) -> dict[str, Any]:
         "target_category": scorecard.target_category,
         "reference_category": scorecard.reference_category,
         "reference_n": scorecard.reference_n,
+        "input_domain": scorecard.input_domain,
+        "reference_domain": scorecard.reference_domain,
+        "warnings": scorecard.warnings,
         "overall_score": scorecard.overall_score,
         "axes": [
             {
@@ -267,6 +270,23 @@ def get_submission_history(user_id: str) -> dict[str, Any]:
 
 
 _DIAGNOSTIC_CONTEXT: dict[str, dict[str, Any]] = {
+    "_reference_caveat": {
+        "name": "About the reference set",
+        "what_it_measures": (
+            "The bundled reference distributions are built from APOD display "
+            "images — overwhelmingly 8-bit JPEGs (some PNG, rare TIFF). They reflect "
+            "the look of *finished, exported* astrophotos, not linear master data."
+        ),
+        "implications": [
+            "Several metrics will be biased toward the JPEG fingerprint of the "
+            "reference: autocorrelation width, high-frequency PSD suppression, "
+            "gradient_ratio (in noise-floor units), and color-channel cross-correlations.",
+            "Submitting a linear FITS / 16-bit TIFF will produce skewed scores "
+            "because the input is in a different domain than the reference.",
+            "For comparable scoring, export an 8-bit JPEG/PNG with your final "
+            "processing applied and submit that.",
+        ],
+    },
     "median_fwhm_px": {
         "name": "Median FWHM",
         "what_it_measures": (

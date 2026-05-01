@@ -248,15 +248,28 @@ class ScoreCard:
     metric_scores: list[MetricScore]
     diagnostics: list[str]
     overall_score: float
+    warnings: list[str] = field(default_factory=list)
+    input_domain: str = "unknown"          # "display" / "linear" / "unknown"
+    reference_domain: str = "display"      # baseline is APOD JPEGs
 
     def text_report(self) -> str:
-        lines = [
-            f"apodornot scorecard — {self.image_path}",
-            f"  Reference set: {self.reference_category} (n={self.reference_n})",
-            f"  Overall: {self.overall_score:.0f}/100",
-            "",
-            "Axes:",
-        ]
+        lines = [f"apodornot scorecard — {self.image_path}"]
+        if self.warnings:
+            lines.append("")
+            lines.append("⚠ Warnings:")
+            for w in self.warnings:
+                lines.append(f"  - {w}")
+        lines.extend(
+            [
+                "",
+                f"  Reference set: {self.reference_category} (n={self.reference_n}, "
+                f"domain={self.reference_domain})",
+                f"  Input domain:  {self.input_domain}",
+                f"  Overall: {self.overall_score:.0f}/100",
+                "",
+                "Axes:",
+            ]
+        )
         for ax in self.axis_scores:
             lines.append(f"  {ax.axis:22s} {ax.score:5.1f}/100")
         lines.append("")
@@ -483,6 +496,9 @@ def score_evaluation(
     valid_axis_scores = [ax.score for ax in axis_scores if np.isfinite(ax.score)]
     overall = float(np.mean(valid_axis_scores)) if valid_axis_scores else float("nan")
 
+    input_domain = evaluation.image_chars.metadata.input_domain
+    warnings = _domain_warnings(input_domain, reference_domain="display")
+
     return ScoreCard(
         image_path=evaluation.image_path,
         target_category=target_category,
@@ -492,7 +508,39 @@ def score_evaluation(
         metric_scores=metric_scores,
         diagnostics=diagnostics,
         overall_score=overall,
+        warnings=warnings,
+        input_domain=input_domain,
+        reference_domain="display",
     )
+
+
+def _domain_warnings(input_domain: str, *, reference_domain: str) -> list[str]:
+    """Return a list of warnings about input/reference domain mismatch.
+
+    The bundled reference distributions are built from APOD display JPEGs,
+    which carry 8x8 DCT artifacts, chroma subsampling, and 8-bit clipping.
+    Linear/master-data inputs (FITS, 16-bit TIFF, 16-bit PNG) live in a
+    fundamentally different domain, and several metrics — especially
+    ``autocorr_width_px``, ``psd_high_band_suppression``, ``gradient_ratio``,
+    and the color metrics — will read as anomalously good or bad simply because
+    of the domain gap, not because of image quality.
+    """
+    if reference_domain != "display":
+        return []
+    if input_domain == "linear":
+        return [
+            "Domain mismatch: input is linear/master data (FITS or 16-bit raster) but the "
+            "reference set is APOD display JPEGs. Noise, autocorrelation, gradient_ratio, "
+            "and color metrics will be biased by the domain gap, not just by image quality. "
+            "For comparable scoring, export an 8-bit JPEG/PNG with your final processing "
+            "applied and submit that instead."
+        ]
+    if input_domain == "unknown":
+        return [
+            "Could not determine input domain from file extension; treat scores as "
+            "approximate. Reference set is APOD display JPEGs."
+        ]
+    return []
 
 
 __all__ = [

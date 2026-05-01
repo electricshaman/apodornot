@@ -43,6 +43,8 @@ class EvaluationResult:
                 "height": meta.height,
                 "bit_depth": meta.bit_depth,
                 "is_color": meta.is_color,
+                "file_format": meta.file_format,
+                "input_domain": meta.input_domain,
                 "dynamic_range_used": meta.dynamic_range_used,
                 "clipped_low_fraction": meta.clipped_low_fraction,
                 "clipped_high_fraction": meta.clipped_high_fraction,
