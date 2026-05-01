@@ -171,6 +171,12 @@
     "advanced": "90th percentile of the reference distribution. Upper whisker on quantile plots; the high-tail benchmark."
   },
 
+  "fwhm_quadrant_asymmetry": {
+    "label": "FWHM quadrant asymmetry",
+    "beginner": "Whether one corner of your image is sharper than the opposite corner. If the upper-left is sharp but the lower-right is fat, your camera is probably tilted.",
+    "intermediate": "Difference between the worst and best quadrant's median star size, normalized by the field median. Symmetric softness across all four corners is field curvature; one diagonal worse than the other is sensor tilt.",
+    "advanced": "(max(quadrant median FWHM) − min(quadrant median FWHM)) / median FWHM, computed by partitioning the fitted-star catalog into top-left/top-right/bottom-left/bottom-right at the image center. Distinguishes uniform field curvature (low asymmetry, high corner-excess) from tilt (high asymmetry, paired diagonal corners worst)."
+  },
   "corner_fwhm_excess": {
     "label": "Corner FWHM excess",
     "beginner": "How much fatter your stars look at the corners of the frame compared to the center. Big number = the lens isn't sharp at the edges.",

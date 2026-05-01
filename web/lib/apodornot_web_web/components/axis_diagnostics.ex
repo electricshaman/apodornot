@@ -29,6 +29,7 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
     "median_fwhm_px" => "fwhm",
     "median_eccentricity" => "eccentricity",
     "fwhm_corner_excess" => "corner_fwhm_excess",
+    "fwhm_quadrant_asymmetry" => "fwhm_quadrant_asymmetry",
     "noise_floor_l" => "background_sigma",
     "psd_spectral_slope" => "noise_psd_slope",
     "psd_high_band_suppression" => "hf_suppression",
