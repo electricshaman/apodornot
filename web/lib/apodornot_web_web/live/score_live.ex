@@ -291,11 +291,11 @@ defmodule ApodornotWebWeb.ScoreLive do
         <.overall_score_panel scorecard={@scorecard} />
       </div>
 
-      <.radar_chart :if={@scorecard["axes"] != []} axes={@scorecard["axes"]} />
-
       <div :if={@scorecard["axes"] != []} class="grid grid-cols-1 md:grid-cols-5 gap-3">
         <.axis_card :for={ax <- @scorecard["axes"]} axis={ax} />
       </div>
+
+      <.radar_chart :if={@scorecard["axes"] != []} axes={@scorecard["axes"]} />
 
       <.findings_list diagnostics={@scorecard["diagnostics"]} collapsed={@findings_collapsed} />
 
