@@ -1,5 +1,66 @@
-
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
 .beads-credential-key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache/
+coverage.xml
+*.cover
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Project data (keep out of git — large + recreatable)
+apod_archive/
+apod_cache/
+data/
+output/
+*.fits
+*.tif
+*.tiff
+!tests/fixtures/**/*.fits
+!tests/fixtures/**/*.tif
+!tests/fixtures/**/*.tiff
+
+# Secrets
+.env
+.env.*
+!.env.example
