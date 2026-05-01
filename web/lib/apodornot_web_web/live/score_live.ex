@@ -661,9 +661,12 @@ defmodule ApodornotWebWeb.ScoreLive do
   # Custom polar SVG radar — no JS, no chart lib.
   defp radar_chart(assigns) do
     n = length(assigns.axes)
-    # Wide viewBox with the polar plot off-center so the long labels at
-    # ~3 o'clock and ~9 o'clock have horizontal room.
-    vb_w = 520
+    # Wide viewBox with extra horizontal padding so the long labels at
+    # ~3 o'clock and ~9 o'clock ('NOISE MANAGEMENT', 'COLOR CALIBRATION')
+    # don't clip. 'NOISE MANAGEMENT' at 11px ≈ 140px wide → need at
+    # least 150px between the plot's right edge and the viewBox right
+    # edge. Plot diameter 280px, so viewBox = 280 + 2*180 = 640.
+    vb_w = 640
     vb_h = 400
     cx = vb_w / 2
     cy = vb_h / 2
@@ -748,7 +751,7 @@ defmodule ApodornotWebWeb.ScoreLive do
 
     ~H"""
     <div class="border border-slate-800 bg-slate-900/30 rounded p-6 flex justify-center">
-      <svg viewBox={"0 0 #{@vb_w} #{@vb_h}"} class="w-full max-w-2xl" preserveAspectRatio="xMidYMid meet">
+      <svg viewBox={"0 0 #{@vb_w} #{@vb_h}"} class="w-full max-w-3xl" preserveAspectRatio="xMidYMid meet">
         <polygon :for={g <- @grid_points} points={g.points}
                  fill="none" stroke="rgb(30 41 59)" stroke-width="1" />
         <line :for={s <- @spokes} x1={@cx} y1={@cy} x2={s.x2} y2={s.y2}
