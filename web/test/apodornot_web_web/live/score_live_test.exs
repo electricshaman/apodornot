@@ -58,9 +58,14 @@ defmodule ApodornotWebWeb.ScoreLiveTest do
     rendered = render(view)
     assert rendered =~ "72"  # overall score
     assert rendered =~ "Star quality"
-    assert rendered =~ "Star eccentricity is elevated"
     assert rendered =~ "rosette"
-    refute rendered =~ "pipeline" |> String.replace(~r/\s+/, " ")
+    # Findings panel exists (collapsed by default — body hidden until toggled).
+    assert rendered =~ "static findings"
+    refute rendered =~ "Star eccentricity is elevated"  # body hidden when collapsed
+
+    # Expand findings → body visible.
+    rendered = view |> element("button[phx-click='toggle_findings']") |> render_click()
+    assert rendered =~ "Star eccentricity is elevated"
   end
 
   test "error event renders the failure panel", %{conn: conn} do
@@ -74,7 +79,7 @@ defmodule ApodornotWebWeb.ScoreLiveTest do
     assert rendered =~ "connection refused"
   end
 
-  test "chat sidebar is open by default once a scorecard is loaded", %{conn: conn} do
+  test "chat sidebar is open by default and auto-seeds on scorecard arrival", %{conn: conn} do
     sub_id = "test-sub-chat-1"
     {:ok, view, _html} = live(conn, ~p"/s/#{sub_id}")
 
@@ -90,17 +95,31 @@ defmodule ApodornotWebWeb.ScoreLiveTest do
     PubSub.broadcast(@pubsub, PipelineRunner.topic(sub_id), {"scorecard", sc})
 
     rendered = render(view)
-    # Open by default — sidebar visible, with the chat input + placeholder.
+    # Open by default — sidebar visible, with the auto-seeded user message.
     assert rendered =~ "grounded in your scorecard"
-    assert rendered =~ "ask about a metric"
+    assert rendered =~ "Please give me advice on how to improve this image"
+    # Streaming starts immediately — input is in the "wait" state.
+    assert rendered =~ "thinking" or rendered =~ "wait"
+  end
 
-    # Collapse, then re-open.
+  test "chat sidebar can be collapsed and re-opened", %{conn: conn} do
+    sub_id = "test-sub-chat-toggle"
+    {:ok, view, _html} = live(conn, ~p"/s/#{sub_id}")
+    sc = %{
+      "image_path" => "x.jpg", "target_category" => "rosette",
+      "reference_category" => "rosette", "reference_n" => 33,
+      "input_domain" => "display", "reference_domain" => "display",
+      "warnings" => [], "overall_score" => 72.0,
+      "axes" => [], "metrics" => [], "diagnostics" => []
+    }
+    PubSub.broadcast(@pubsub, PipelineRunner.topic(sub_id), {"scorecard", sc})
+
     rendered = view |> element("button[phx-click='toggle_chat']") |> render_click()
     assert rendered =~ "review chat"  # collapsed-tab label
-    refute rendered =~ "ask about a metric"
+    refute rendered =~ "grounded in your scorecard"
 
     rendered = view |> element("button[phx-click='toggle_chat']") |> render_click()
-    assert rendered =~ "ask about a metric"
+    assert rendered =~ "grounded in your scorecard"
   end
 
   test "chat tokens stream into the active turn and finalize on done", %{conn: conn} do

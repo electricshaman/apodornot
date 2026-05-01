@@ -32,7 +32,10 @@ defmodule ApodornotWebWeb.ScoreLive do
        chat_active_ref: nil,       # ref for the in-flight stream
        chat_active_text: "",       # accumulating assistant text for the current turn
        chat_tool_uses: [],         # tool_use events surfaced for the current turn
-       chat_draft: ""
+       chat_draft: "",
+       # Findings panel collapsed by default — the chat is the primary review;
+       # findings is the deterministic fallback for note-taking / no-LLM use.
+       findings_collapsed: true
      )
      |> stream_configure(:stages, dom_id: &"stage-#{&1["stage"]}")
      |> stream(:stages, [])}
@@ -43,8 +46,28 @@ defmodule ApodornotWebWeb.ScoreLive do
     {:noreply, stream_insert(socket, :stages, payload)}
   end
 
+  @auto_review_prompt "Please give me advice on how to improve this image."
+
   def handle_info({"scorecard", payload}, socket) do
-    {:noreply, assign(socket, :scorecard, payload)}
+    socket = assign(socket, :scorecard, payload)
+    # Once metrics are complete, auto-seed the chat with a review request —
+    # but only if the user hasn't already started a conversation.
+    if socket.assigns.chat_messages == [] and not socket.assigns.chat_streaming do
+      ref = make_ref()
+      messages = [%{role: "user", content: @auto_review_prompt}]
+      ChatRunner.start(self(), ref, payload, messages,
+        image_path: payload["image_path"],
+        equipment_context: socket.assigns.equipment_context)
+      {:noreply,
+       assign(socket,
+         chat_messages: messages,
+         chat_streaming: true,
+         chat_active_ref: ref,
+         chat_active_text: "",
+         chat_tool_uses: [])}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info({"error", payload}, socket) do
@@ -119,6 +142,10 @@ defmodule ApodornotWebWeb.ScoreLive do
     {:noreply, assign(socket, :chat_open, !socket.assigns.chat_open)}
   end
 
+  def handle_event("toggle_findings", _, socket) do
+    {:noreply, assign(socket, :findings_collapsed, !socket.assigns.findings_collapsed)}
+  end
+
   def handle_event("update_draft", %{"chat" => %{"draft" => draft}}, socket) do
     {:noreply, assign(socket, :chat_draft, draft)}
   end
@@ -185,6 +212,7 @@ defmodule ApodornotWebWeb.ScoreLive do
               scorecard={@scorecard}
               image_filename={@image_filename}
               selected_axis={@selected_axis}
+              findings_collapsed={@findings_collapsed}
             />
           <% true -> %>
             <.loading_view stages={@streams.stages} />
@@ -248,7 +276,7 @@ defmodule ApodornotWebWeb.ScoreLive do
         <.axis_card :for={ax <- @scorecard["axes"]} axis={ax} />
       </div>
 
-      <.findings_list diagnostics={@scorecard["diagnostics"]} />
+      <.findings_list diagnostics={@scorecard["diagnostics"]} collapsed={@findings_collapsed} />
 
       <.stage_drawer
         :if={@selected_axis}
@@ -425,23 +453,31 @@ defmodule ApodornotWebWeb.ScoreLive do
 
   defp findings_list(assigns) do
     ~H"""
-    <div class="border border-slate-800 bg-slate-900/30 rounded p-5">
-      <div class="flex justify-between items-baseline mb-4">
-        <div class="font-mono text-[10px] uppercase tracking-widest text-slate-500">
-          findings
+    <div class="border border-slate-800 bg-slate-900/30 rounded">
+      <button phx-click="toggle_findings"
+              class="w-full flex justify-between items-center p-5 text-left hover:bg-slate-900/50 transition-colors">
+        <div class="flex items-baseline gap-3">
+          <span class="inline-block transition-transform" style={if @collapsed, do: "", else: "transform: rotate(90deg)"}>▸</span>
+          <div class="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+            static findings · deterministic
+          </div>
+          <span class="font-mono text-[10px] text-slate-600">{length(@diagnostics)}</span>
         </div>
-        <button :if={!Enum.empty?(@diagnostics)}
-                onclick={"navigator.clipboard.writeText(#{Jason.encode!(Enum.join(@diagnostics, "\n\n"))})"}
+        <button :if={!@collapsed and !Enum.empty?(@diagnostics)}
+                type="button"
+                onclick={"event.stopPropagation(); navigator.clipboard.writeText(#{Jason.encode!(Enum.join(@diagnostics, "\n\n"))})"}
                 class="font-mono text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-200">
           copy as markdown
         </button>
-      </div>
-      <div :if={Enum.empty?(@diagnostics)} class="text-slate-500 italic text-sm">
-        No notable weaknesses.
-      </div>
-      <div class="space-y-5 prose-findings">
-        <div :for={d <- @diagnostics}>
-          {render_md(d)}
+      </button>
+      <div :if={!@collapsed} class="px-5 pb-5">
+        <div :if={Enum.empty?(@diagnostics)} class="text-slate-500 italic text-sm">
+          No notable weaknesses.
+        </div>
+        <div class="space-y-5 prose-findings">
+          <div :for={d <- @diagnostics}>
+            {render_md(d)}
+          </div>
         </div>
       </div>
     </div>
