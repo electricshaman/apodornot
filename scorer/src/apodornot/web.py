@@ -35,8 +35,10 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from .archive_pipeline import build_archive_index
+from .chat import stream_chat
 from .logging import configure_logging, get_logger
 from .pipeline import evaluate_image
 from .scoring import ScoreCard, score_evaluation
@@ -119,6 +121,49 @@ async def evaluate(image_path: str, target_type: str | None = None) -> Streaming
             yield _sse(event_type, payload)
             if event_type == "done":
                 return
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------- #
+# Chat (Anthropic + apodornot tool surface)
+# ---------------------------------------------------------------------------- #
+
+
+class ChatMessage(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str | list[dict[str, Any]]
+
+
+class ChatRequest(BaseModel):
+    scorecard: dict[str, Any]
+    messages: list[ChatMessage]
+    archive_dir: str = "apod_archive"
+
+
+@app.post("/chat")
+async def chat(req: ChatRequest) -> StreamingResponse:
+    """Stream a Claude chat turn over the user's scorecard via SSE.
+
+    Tool calls land as ``event: tool_use`` for UX (e.g. "Claude is checking
+    your noise stats..."). Token deltas land as ``event: token``. The stream
+    closes with ``event: done`` (or ``event: error``).
+    """
+    messages = [m.model_dump() for m in req.messages]
+
+    async def event_stream():
+        try:
+            async for event_type, payload in stream_chat(
+                scorecard=req.scorecard,
+                messages=messages,
+                archive_dir=req.archive_dir,
+            ):
+                yield _sse(event_type, payload)
+        except Exception as exc:  # safety net — stream_chat already handles most
+            log.exception("chat stream crashed")
+            yield _sse("error", {"message": str(exc), "type": type(exc).__name__})
+        finally:
+            yield _sse("close", {})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
