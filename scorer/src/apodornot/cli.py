@@ -31,6 +31,28 @@ def _build_parser() -> argparse.ArgumentParser:
     score = sub.add_parser("score", help="Score an image against APOD reference distributions.")
     score.add_argument("image", help="Path to image")
     score.add_argument("--target-type", default=None, help="Optional target category")
+    score.add_argument("--radar", default=None, help="Output PNG path for radar chart")
+
+    build = sub.add_parser(
+        "build-archive",
+        help="Run the measurement pipeline against an APOD archive (cached).",
+    )
+    build.add_argument("--archive", default="apod_archive", help="APOD archive directory")
+    build.add_argument("--cache", default="apod_cache", help="Per-image evaluation cache dir")
+    build.add_argument("--workers", type=int, default=None, help="Parallel workers (default: cpu - 1)")
+    build.add_argument("--limit", type=int, default=None, help="Limit number of images processed")
+    build.add_argument("--force", action="store_true", help="Re-process cached entries")
+
+    dists = sub.add_parser(
+        "build-distributions",
+        help="Aggregate cached evaluations into reference distributions JSON.",
+    )
+    dists.add_argument("--archive", default="apod_archive", help="APOD archive directory")
+    dists.add_argument("--cache", default="apod_cache", help="Per-image evaluation cache dir")
+    dists.add_argument(
+        "--output", default="src/apodornot/data/reference_distributions.json",
+        help="Output path for distributions JSON (default: bundled package data)",
+    )
 
     return p
 
@@ -58,9 +80,49 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "score":
-        from .pipeline import score_image
-        result = score_image(args.image, target_type=args.target_type)
-        print(result.text_report())
+        from .pipeline import evaluate_image
+        from .scoring import render_radar_chart, score_evaluation
+
+        result = evaluate_image(args.image)
+        scorecard = score_evaluation(result, target_type=args.target_type)
+        print(scorecard.text_report())
+        if args.radar:
+            out = render_radar_chart(scorecard, args.radar)
+            log.info("Radar chart written to %s", out)
+        return 0
+
+    if args.command == "build-archive":
+        from .archive_pipeline import run_archive
+
+        result = run_archive(
+            args.archive,
+            args.cache,
+            workers=args.workers,
+            limit=args.limit,
+            force=args.force,
+        )
+        log.info(
+            "Archive run: processed=%d skipped=%d errors=%d",
+            result["processed"], result["skipped"], len(result["errors"]),
+        )
+        for path, err in result["errors"][:20]:
+            log.warning("FAIL %s: %s", path, err)
+        log.info("Categories: %s", result["by_category"])
+        return 0
+
+    if args.command == "build-distributions":
+        from .archive_pipeline import build_distributions, save_distributions
+
+        dists = build_distributions(args.cache, args.archive)
+        save_distributions(dists, args.output)
+        n_global = max(
+            (m.n for m in dists.by_category.get("global", {}).values()),
+            default=0,
+        )
+        log.info(
+            "Wrote distributions to %s (categories=%d, global n=%d)",
+            args.output, len(dists.by_category), n_global,
+        )
         return 0
 
     log.error("Unknown command: %s", args.command)

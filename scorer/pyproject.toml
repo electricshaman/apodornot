@@ -40,7 +40,7 @@ apodornot = "apodornot.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-apodornot = ["py.typed"]
+apodornot = ["py.typed", "data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

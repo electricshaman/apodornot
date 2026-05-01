@@ -261,14 +261,37 @@ def extract_sources(
 ) -> np.ndarray:
     """Run SEP source extraction at ``threshold_sigma`` over the local RMS.
 
+    Retries at a higher threshold if SEP's internal pixel stack overflows
+    (which happens on highly nebulous frames where huge connected regions
+    exceed the default 300k pixel buffer).
+
     Returns SEP's structured catalog ndarray.
     """
     import sep
 
+    # Bump the pixel stack limit once. SEP's default is 300k; 5M is enough
+    # for very nebulous frames at full resolution.
+    try:
+        sep.set_extract_pixstack(5_000_000)
+    except Exception:
+        pass
+
     data = np.ascontiguousarray(background_subtracted, dtype=np.float32)
     err = np.ascontiguousarray(rms, dtype=np.float32)
-    objs = sep.extract(data, threshold_sigma, err=err, minarea=min_area)
-    return objs
+
+    for thresh in (threshold_sigma, threshold_sigma * 2.0, threshold_sigma * 4.0):
+        try:
+            return sep.extract(data, thresh, err=err, minarea=min_area)
+        except Exception as exc:
+            if "pixel buffer full" in str(exc) or "pixstack" in str(exc):
+                log.warning(
+                    "SEP pixel buffer full at %.1f sigma; retrying at %.1f sigma",
+                    thresh, thresh * 2.0,
+                )
+                continue
+            raise
+    # Last resort: raise so the caller can mark this image as failed.
+    raise RuntimeError("SEP source extraction failed at every retry threshold")
 
 
 # ---------------------------------------------------------------------------- #

@@ -40,11 +40,37 @@ class CategoryRule:
     keywords: tuple[str, ...]
 
 
-# Order matters: more specific categories should win. We test in declaration order.
+# Order matters: more specific or higher-priority categories must win. We test
+# in declaration order. Phenomena that often *appear in front of* deep-sky targets
+# in APOD explanations (aurora over a Milky Way background, comet near a galaxy,
+# planet near nebula) are checked before the deep-sky rules.
 CATEGORY_RULES: tuple[CategoryRule, ...] = (
     CategoryRule(
+        "aurora",
+        ("aurora", "northern lights", "southern lights"),
+    ),
+    CategoryRule(
+        "atmospheric",
+        ("rainbow", "noctilucent clouds", "lightning", "sun pillar", "ice halo"),
+    ),
+    CategoryRule(
+        "comet",
+        ("comet ", "comet-", "tail of comet", "cometary"),
+    ),
+    CategoryRule(
+        "solar_system",
+        (
+            "the moon", "lunar surface", "lunar eclipse", "moonrise", "moonset",
+            "mars", "jupiter", "saturn", "venus", "mercury", "uranus", "neptune",
+            "asteroid", "io,", "europa", "titan", "phobos", "ceres", "pluto",
+            "the sun", "solar prominence", "solar flare", "solar eclipse",
+            "international space station", "iss ", "iss,", "spacex", "falcon heavy",
+            "starship", "rocket launch", "slim ", "spacecraft",
+        ),
+    ),
+    CategoryRule(
         "planetary_nebula",
-        ("planetary nebula", "ngc 7293", "helix nebula", "ring nebula", "dumbbell nebula"),
+        ("planetary nebula", "helix nebula", "ring nebula", "dumbbell nebula", "ngc 7293"),
     ),
     CategoryRule(
         "supernova_remnant",
@@ -53,9 +79,10 @@ CATEGORY_RULES: tuple[CategoryRule, ...] = (
     CategoryRule(
         "emission_nebula",
         (
-            "emission nebula", "h ii region", "hii region", "ha emission",
+            "emission nebula", "h ii region", "hii region", "h-alpha emission",
             "orion nebula", "lagoon nebula", "trifid", "rosette", "north america nebula",
-            "horsehead", "tarantula nebula", "pelican",
+            "horsehead", "tarantula nebula", "pelican nebula", "california nebula",
+            "seagull nebula",
         ),
     ),
     CategoryRule(
@@ -68,7 +95,7 @@ CATEGORY_RULES: tuple[CategoryRule, ...] = (
     ),
     CategoryRule(
         "globular_cluster",
-        ("globular cluster", "messier 13", "m13", "omega centauri", "47 tucanae", "m22 "),
+        ("globular cluster", "messier 13", "m13 ", "omega centauri", "47 tucanae", "m22 "),
     ),
     CategoryRule(
         "open_cluster",
@@ -81,34 +108,14 @@ CATEGORY_RULES: tuple[CategoryRule, ...] = (
     CategoryRule(
         "galaxy",
         (
-            "galaxy", "andromeda galaxy", "m31 ", "ngc ", "spiral", "elliptical",
-            "irregular galaxy", "dwarf galaxy", "milky way galaxy", "whirlpool",
-            "pinwheel", "sombrero",
+            "spiral galaxy", "elliptical galaxy", "irregular galaxy", "dwarf galaxy",
+            "andromeda galaxy", "m31 ", "whirlpool galaxy", "pinwheel galaxy",
+            "sombrero galaxy", "antennae galaxies", "galactic disk",
         ),
     ),
     CategoryRule(
         "milky_way_widefield",
         ("milky way", "rho ophiuchi", "galactic center", "galactic plane"),
-    ),
-    CategoryRule(
-        "comet",
-        ("comet ", "comet-", "tail of comet"),
-    ),
-    CategoryRule(
-        "aurora",
-        ("aurora", "northern lights", "southern lights"),
-    ),
-    CategoryRule(
-        "solar_system",
-        (
-            "moon", "mars", "jupiter", "saturn", "venus", "mercury", "uranus", "neptune",
-            "asteroid", "io", "europa", "titan", "phobos", "ceres",
-            "the sun", "solar prominence", "solar flare", "iss ", "lunar",
-        ),
-    ),
-    CategoryRule(
-        "atmospheric",
-        ("rainbow", "halo", "noctilucent clouds", "lightning", "sun pillar"),
     ),
 )
 
