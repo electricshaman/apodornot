@@ -57,7 +57,9 @@ SEP's default pixel-stack size (300,000) overflows on highly nebulous frames whe
 
 A0–A8 form the **measurement pipeline**. Everything here is deterministic signal processing and statistics — no LLMs, no ambiguity. The output of A7 is a structured scorecard of raw metrics, percentile rankings, and diagnostic flags. This boundary is critical: the measurement pipeline must produce correct, reproducible results regardless of what happens downstream.
 
-A9 is the **presentation layer**, implemented as an MCP server. It exposes the measurement pipeline as tools that any MCP-compatible LLM client (Claude, a custom chat UI, etc.) can call. The LLM never sees the raw image — only structured metrics, scores, and flags returned by tool calls. This is the explicit contract: A9 provides the tools, the LLM client explains and discusses results that A0–A8 measured. The conversation layer doesn't live in the codebase — it lives in whatever LLM client connects to the MCP server.
+A9 is the **presentation layer for LLM clients**, implemented as an MCP server. It exposes the measurement pipeline as tools that any MCP-compatible LLM client (Claude, a custom chat UI, etc.) can call. The LLM never sees the raw image — only structured metrics, scores, and flags returned by tool calls. This is the explicit contract: A9 provides the tools, the LLM client explains and discusses results that A0–A8 measured. The conversation layer doesn't live in the codebase — it lives in whatever LLM client connects to the MCP server.
+
+A separate **HTTP/SSE presentation layer** (`apodornot.web`, a FastAPI service — see `docs/integration-sketch.md`) is the canonical interface for non-LLM UI clients (the Phoenix LiveView frontend, future React clients, etc.). Both A9 and `apodornot.web` are thin facades over the same `evaluate_image` and `score_evaluation` functions — the wire formats differ (MCP tool calls vs SSE event stream) but the underlying measurement is identical. New pipeline capabilities should be exposed through both surfaces.
 
 ---
 

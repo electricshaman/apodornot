@@ -7,9 +7,17 @@ metrics across the APOD distribution. The CLI uses ``evaluate_image`` and
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# (stage, status, detail) — e.g., ("A2", "done", "fit 98 stars, FWHM 3.26 px")
+ProgressCallback = Callable[[str, str, str], None]
+
+
+def _no_progress(_stage: str, _status: str, _detail: str = "") -> None:
+    """Default no-op progress callback."""
 
 from .color import ColorResult, analyze_color
 from .gradient import CalibrationAssessment, assess_calibration
@@ -114,16 +122,73 @@ class EvaluationResult:
         return "\n".join(lines)
 
 
-def evaluate_image(path: str | Path, *, max_stars: int = 100) -> EvaluationResult:
-    """Run A1–A6 against a single image."""
+def evaluate_image(
+    path: str | Path,
+    *,
+    max_stars: int = 100,
+    on_progress: ProgressCallback | None = None,
+) -> EvaluationResult:
+    """Run A1–A6 against a single image.
+
+    ``on_progress`` is an optional callback invoked at the start and end of each
+    stage with ``(stage, status, detail)``. Used by the streaming web service
+    (apodornot.web) to surface stage events to a UI in real time. The default
+    is a no-op so existing callers are unaffected.
+    """
+    on_progress = on_progress or _no_progress
     log.info("evaluate_image: %s", path)
+
+    on_progress("A1", "running", "characterizing image")
     chars = characterize_image(path)
+    on_progress(
+        "A1",
+        "done",
+        f"{chars.sources.total_detected()} sources "
+        f"({len(chars.sources.stars)} stars, "
+        f"{len(chars.sources.extended)} extended)",
+    )
+
+    on_progress("A2", "running", "fitting star profiles")
     sf = analyze_star_field(chars, max_stars=max_stars)
-    fwhm = sf.field_variation.median_fwhm if sf.field_variation else None
+    fv = sf.field_variation
+    fwhm = fv.median_fwhm if fv else None
+    a2_detail = f"fit {len(sf.measurements)} stars"
+    if fv and fwhm is not None:
+        a2_detail += f", median FWHM {fwhm:.2f} px ({fv.eccentricity_pattern})"
+    on_progress("A2", "done", a2_detail)
+
+    on_progress("A3", "running", "characterizing noise")
     noise = characterize_noise(chars)
+    on_progress(
+        "A3",
+        "done",
+        f"{noise.n_background_patches} bg patches, "
+        f"autocorr {noise.autocorr_width_px:.2f} px, "
+        f"SNR {noise.snr_target:.1f}",
+    )
+
+    on_progress("A4", "running", "frequency analysis")
     tf = analyze_target_frequency(chars, fwhm_px=fwhm)
+    on_progress(
+        "A4",
+        "done",
+        f"slope {tf.spectral_slope:.2f}, {len(tf.artifacts)} artifact(s)",
+    )
+
+    on_progress("A5", "running", "calibration assessment")
     cal = assess_calibration(chars)
+    on_progress(
+        "A5",
+        "done",
+        f"gradient ratio {cal.gradient.gradient_ratio:.1f}, "
+        f"vignetting {cal.vignetting.center_to_corner_falloff:.2f}",
+    )
+
+    on_progress("A6", "running", "color analysis")
     col = analyze_color(chars, sf)
+    palette = col.target_distribution.palette if col.target_distribution else "n/a"
+    on_progress("A6", "done", f"palette={palette}, overall {col.overall_score:.2f}")
+
     return EvaluationResult(
         image_path=str(path),
         image_chars=chars,

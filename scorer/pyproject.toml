@@ -28,14 +28,20 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=4.1",
     "ruff>=0.5",
+    "httpx>=0.27",
 ]
 mcp = [
     "mcp>=1.0",
+]
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
 ]
 
 [project.scripts]
 apodornot = "apodornot.cli:main"
 apodornot-mcp = "apodornot.mcp_server:main"
+apodornot-web = "apodornot.web:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -35,7 +35,8 @@ to handle the natural-language conversation around the results.
 | A6 | `color` | Star color accuracy, background neutrality, palette detection |
 | A7 | `scoring` | Percentile scoring against APOD distributions, scorecard |
 | A8 | `archive_pipeline` | Batch processing of the APOD archive, distribution building |
-| A9 | `mcp_server` | MCP tools server (presentation layer) |
+| A9 | `mcp_server` | MCP tools server (presentation layer for LLM clients) |
+| —  | `web` | FastAPI streaming HTTP service (presentation layer for LiveView / web UI) |
 
 ## Install
 
@@ -66,6 +67,9 @@ apodornot build-distributions
 
 # Run the MCP server (stdio for Claude Desktop / Claude Code)
 apodornot-mcp
+
+# Run the FastAPI streaming service for the LiveView frontend
+apodornot-web --port 8000
 ```
 
 ## NASA API key
