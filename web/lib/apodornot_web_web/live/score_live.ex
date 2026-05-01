@@ -661,9 +661,13 @@ defmodule ApodornotWebWeb.ScoreLive do
   # Custom polar SVG radar — no JS, no chart lib.
   defp radar_chart(assigns) do
     n = length(assigns.axes)
-    cx = 200
-    cy = 200
-    r_max = 150
+    # Wide viewBox with the polar plot off-center so the long labels at
+    # ~3 o'clock and ~9 o'clock have horizontal room.
+    vb_w = 520
+    vb_h = 400
+    cx = vb_w / 2
+    cy = vb_h / 2
+    r_max = 140
 
     # Polar grid rings at 20/40/60/80/100
     grid_points = Enum.map([20, 40, 60, 80, 100], fn pct ->
@@ -697,16 +701,46 @@ defmodule ApodornotWebWeb.ScoreLive do
         angle = -:math.pi() / 2 + 2 * :math.pi() * i / n
         x = cx + r * :math.cos(angle)
         y = cy + r * :math.sin(angle)
-        label_r = r_max + 24
+
+        # Push labels outside the grid in the angular direction
+        label_r = r_max + 18
         lx = cx + label_r * :math.cos(angle)
         ly = cy + label_r * :math.sin(angle)
+
+        # Anchor labels so they extend AWAY from the chart instead of
+        # crossing back over it. Right side → text-start (anchored at left
+        # edge of label), left side → text-end, top/bottom → middle.
+        cos_a = :math.cos(angle)
+        text_anchor =
+          cond do
+            cos_a > 0.2 -> "start"
+            cos_a < -0.2 -> "end"
+            true -> "middle"
+          end
+
+        # Same idea vertically: top labels nudge up, bottom labels nudge down.
+        sin_a = :math.sin(angle)
+        baseline =
+          cond do
+            sin_a > 0.3 -> "hanging"
+            sin_a < -0.3 -> "auto"
+            true -> "middle"
+          end
+
         {"#{Float.round(x, 2)},#{Float.round(y, 2)}",
-         %{label: ax["axis"], lx: Float.round(lx, 2), ly: Float.round(ly, 2)}}
+         %{
+           label: ax["axis"],
+           lx: Float.round(lx, 2),
+           ly: Float.round(ly, 2),
+           text_anchor: text_anchor,
+           baseline: baseline
+         }}
       end)
       |> Enum.unzip()
 
     polygon_points = Enum.join(polygon_points, " ")
     assigns = assign(assigns,
+      vb_w: vb_w, vb_h: vb_h,
       cx: cx, cy: cy, r_max: r_max,
       grid_points: grid_points, spokes: spokes,
       polygon_points: polygon_points, labels: labels
@@ -714,7 +748,7 @@ defmodule ApodornotWebWeb.ScoreLive do
 
     ~H"""
     <div class="border border-slate-800 bg-slate-900/30 rounded p-6 flex justify-center">
-      <svg viewBox="0 0 400 400" class="w-full max-w-md" style="aspect-ratio: 1/1">
+      <svg viewBox={"0 0 #{@vb_w} #{@vb_h}"} class="w-full max-w-2xl" preserveAspectRatio="xMidYMid meet">
         <polygon :for={g <- @grid_points} points={g.points}
                  fill="none" stroke="rgb(30 41 59)" stroke-width="1" />
         <line :for={s <- @spokes} x1={@cx} y1={@cy} x2={s.x2} y2={s.y2}
@@ -724,9 +758,9 @@ defmodule ApodornotWebWeb.ScoreLive do
                  stroke="rgb(56 189 248)"
                  stroke-width="2" />
         <text :for={l <- @labels} x={l.lx} y={l.ly}
-              text-anchor="middle" dominant-baseline="middle"
+              text-anchor={l.text_anchor} dominant-baseline={l.baseline}
               fill="rgb(148 163 184)"
-              style="font-family: monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase">
+              style="font-family: monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase">
           {l.label}
         </text>
       </svg>
