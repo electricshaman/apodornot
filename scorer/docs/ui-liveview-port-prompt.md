@@ -21,6 +21,58 @@ I have a React/Tailwind UI for an astrophotography evaluation tool called **apod
 - Separate JS hook files. With LiveView 1.1's **colocated hooks**, any JS lives in the same `.ex` file as the component that needs it (see below).
 - npm tooling beyond what Phoenix ships (esbuild + Tailwind via `mix assets.build`).
 
+## React → LiveView component mapping
+
+The React project will hand you a tree of components. Walk it, and for each one decide which LiveView construct it becomes. **Default to function component.** Reach for `LiveComponent` only when state genuinely lives at that node and can't be lifted to the parent LiveView. Reach for a new `LiveView` only when it's a separate URL.
+
+**Decision rules:**
+
+| React pattern | LiveView equivalent |
+| --- | --- |
+| Functional component, no `useState`/`useReducer` | Function component (`def card(assigns), do: ~H"..."`) |
+| `useState` for pure UI state (open/closed, hover, "expanded") | Function component + `JS.toggle_class` / `JS.show` / `JS.hide` — no server round-trip, no LiveComponent |
+| `useState` for data the user mutates | Hoist to parent LiveView assigns; use `phx-click` / `phx-change` to update |
+| `useEffect` that fetches data on mount | `assign_async/3` on the parent LiveView, with `<.async_result>` |
+| `useEffect` that subscribes to a websocket / event source | `Phoenix.PubSub.subscribe` in `mount/3`, `handle_info/2` for events |
+| `useEffect` cleanup function | `terminate/2` callback |
+| `useMemo` for expensive derived data | Compute once in `mount/3` or `handle_event/3`, store in assigns; LiveView change-tracks for free |
+| `useCallback` | N/A — not a thing in HEEx |
+| `useContext` | Pass assigns down the function component tree explicitly. If genuinely global, `Phoenix.Component.assign_new` from a `live_session` `on_mount` hook |
+| Custom hook (`useFoo`) | Plain Elixir module function returning `{key, value}` tuples to assign |
+| `{condition && <X />}` | `<.x :if={condition} />` |
+| `{items.map(item => <X key={item.id} ... />)}` | `<.x :for={item <- @items} :key={item.id} ... />` (1.1+ change-tracked) |
+| `onClick={fn}` | `phx-click="event_name"` (or `JS.*` for client-only) |
+| Controlled `<input value={x} onChange={set}>` | `<.input field={@form[:x]}>` inside a `phx-change` form |
+| `children` prop | Default slot: `<:inner_block>` rendered with `{render_slot(@inner_block)}` |
+| Named children (`<Foo header={...}>`) | Named slots: `<:header>` |
+| `{...props}` spread | `<.x {assigns} />` or pass `:rest` global attribute |
+| React Router | Phoenix Router + `live_session` for shared `on_mount` callbacks |
+| `<Suspense>` boundary | `<.async_result>` |
+| Portal (`createPortal`) | `<.portal>` (1.1) |
+
+**Concrete component mapping for this app:**
+
+| React component (likely) | LiveView destination |
+| --- | --- |
+| `<App />` with router | Phoenix Router + `live_session` |
+| `<UploadPage />` | `ApodornotWeb.UploadLive` (page-level LiveView) |
+| `<DropZone />` | Function component using `Phoenix.LiveView.Upload` + `<.live_file_input>` |
+| `<TargetTypeSelect />` | Function component with `<.input type="select">` |
+| `<ScorePage />` | `ApodornotWeb.ScoreLive` (page-level LiveView) |
+| `<LoadingState stages={...} />` | Function component receiving `@streams.stages` |
+| `<StageRow stage={...} />` | Function component rendered inside `:for ... :key` of the stream |
+| `<Scorecard scorecard={...} />` | Function component (top-level scorecard layout) |
+| `<RadarChart axes={...} />` | Function component — hand-rolled SVG, stateless, no hook |
+| `<AxisCard axis={...} onClick={...} />` | Function component, click → `JS.show(to: "#stage-drawer")` + `phx-click="select_stage"` |
+| `<MetricRow metric={...} />` | Function component |
+| `<FindingsList findings={...} />` | Function component with `:for ... :key={index(finding)}` |
+| `<DomainWarningBanner warning={...} />` | Function component with `:if={@scorecard.warnings != []}` |
+| `<StageDetailDrawer open={...} stage={...} />` | Function component wrapping `<.portal>` + `<dialog>`; "open" handled by `JS.show/hide`; "which stage" lives in parent LiveView assigns |
+| `<ReferenceGrid entries={...} />` | Function component, separate `ReferenceLive` page if it has its own URL |
+| `<ImageZoomModal />` | Function component using `<.portal>` + `<dialog>` + `JS.show` |
+
+**The shape of the conversion:** if the React tree has 14 components, the LiveView port should have ~12 function components, 2 page-level LiveViews (`UploadLive`, `ScoreLive`, maybe `ReferenceLive`), and **zero** LiveComponents. If you find yourself writing a LiveComponent, ask whether the state could live one level up instead — the answer is almost always yes for this app.
+
 ## Modern LiveView idioms to use (1.1+)
 
 This is the point of the port. Don't write LiveView like it's 0.18.
