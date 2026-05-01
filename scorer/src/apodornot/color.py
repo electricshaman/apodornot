@@ -98,8 +98,12 @@ def evaluate_star_colors(star_field: StarFieldResult) -> StarColorAccuracy | Non
         ]
     )
     diversity = float(np.mean(iqrs))
-    # Map to a 0..1 score: empirically, IQR ~0.05 = realistic spread, 0.0 = mono.
-    score = float(np.clip(diversity / 0.05, 0.0, 1.0))
+    # Map to an unclipped score: empirically, IQR ~0.05 = realistic spread.
+    # The previous version clipped at 1.0, which saturated most well-processed
+    # images and made the reference distribution useless above the 50th
+    # percentile. Without the clip, scores >1.0 are possible and the
+    # percentile rank stays meaningful across the whole reference set.
+    score = float(diversity / 0.05)
 
     return StarColorAccuracy(
         n_stars=len(colors),
