@@ -19,7 +19,7 @@ defmodule ApodornotWebWeb.UploadLive do
        error: nil
      )
      |> allow_upload(:image,
-       accept: ~w(.fits .fit .tif .tiff .png .jpg .jpeg),
+       accept: ~w(.tif .tiff .png .jpg .jpeg),
        max_file_size: @max_size,
        max_entries: 1,
        auto_upload: false
@@ -82,7 +82,7 @@ defmodule ApodornotWebWeb.UploadLive do
         </div>
         <h1 class="text-3xl font-medium mb-2">Evaluate an astrophoto</h1>
         <p class="text-slate-400 mb-8">
-          Drop a FITS, TIFF, PNG, or JPEG. The pipeline measures it against ~100 APOD reference images
+          Drop a TIFF, PNG, or JPEG export of your finished image. The pipeline measures it against ~100 APOD reference images
           across noise, star quality, gradient, detail, and color.
         </p>
 

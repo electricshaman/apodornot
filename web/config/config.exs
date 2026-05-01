@@ -10,11 +10,6 @@ import Config
 config :apodornot_web,
   generators: [timestamp_type: :utc_datetime]
 
-# Register FITS file type so LiveView's allow_upload accepts .fits / .fit.
-config :mime, :types, %{
-  "image/fits" => ["fits", "fit", "fts"]
-}
-
 # Configure the endpoint
 config :apodornot_web, ApodornotWebWeb.Endpoint,
   url: [host: "localhost"],
