@@ -280,6 +280,60 @@ def latest_archived_date(root: Path) -> date | None:
     return latest
 
 
+def fetch_target(
+    client: ApodClient,
+    *,
+    pattern: str,
+    start: date | str = APOD_FIRST_DATE,
+    end: date | str | None = None,
+    output_dir: str | Path,
+    metadata_only: bool = False,
+    fields: tuple[str, ...] = ("title", "explanation"),
+) -> tuple[int, list[ApodEntry]]:
+    """Fetch every APOD whose title (and optionally explanation) matches ``pattern``.
+
+    Walks the archive metadata in 90-day chunks (single API call per chunk),
+    filters by case-insensitive regex match against ``fields``, and downloads
+    just the matching images. Returns ``(n_downloaded, matched_entries)``.
+
+    Use ``metadata_only=True`` to skip image downloads (returns matched
+    metadata only).
+    """
+    import re as _re
+
+    rx = _re.compile(pattern, _re.IGNORECASE)
+    end_d = date.fromisoformat(_to_date_str(end)) if end is not None else date.today()
+    start_d = date.fromisoformat(_to_date_str(start))
+    if start_d > end_d:
+        raise ValueError(f"start ({start_d}) is after end ({end_d})")
+
+    matched: list[ApodEntry] = []
+    root = Path(output_dir)
+    written = 0
+
+    for chunk_start, chunk_end in _date_chunks(start_d, end_d, chunk_days=90):
+        log.info("Scanning APOD %s..%s for /%s/", chunk_start, chunk_end, pattern)
+        try:
+            entries = client.get_range(chunk_start, chunk_end)
+        except Exception as exc:
+            log.warning("metadata fetch failed for %s..%s: %s — skipping chunk", chunk_start, chunk_end, exc)
+            continue
+        for entry in entries:
+            haystack = " ".join(getattr(entry, f, "") or "" for f in fields)
+            if not rx.search(haystack):
+                continue
+            matched.append(entry)
+            log.info("MATCH %s — %s", entry.date, entry.title)
+            if metadata_only:
+                continue
+            try:
+                if _ingest_entry(client, entry, root, skip_videos=True):
+                    written += 1
+            except Exception as exc:
+                log.error("Failed to download %s: %s", entry.date, exc)
+    return written, matched
+
+
 def fetch_range(
     client: ApodClient,
     *,
@@ -366,6 +420,7 @@ __all__ = [
     "classify_entry",
     "entry_paths",
     "fetch_range",
+    "fetch_target",
     "latest_archived_date",
     "write_sidecar",
 ]

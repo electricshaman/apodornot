@@ -24,6 +24,27 @@ def _build_parser() -> argparse.ArgumentParser:
     fetch.add_argument("--output", default="apod_archive", help="Output directory")
     fetch.add_argument("--api-key", default=None, help="NASA API key (env: NASA_API_KEY)")
 
+    ftgt = sub.add_parser(
+        "fetch-target",
+        help="Walk the APOD archive and download every entry matching a title regex.",
+    )
+    ftgt.add_argument(
+        "--pattern", required=True,
+        help="Case-insensitive regex tested against title (and explanation if --include-explanation)",
+    )
+    ftgt.add_argument("--start", default="1995-06-16", help="Start date YYYY-MM-DD (default: APOD start)")
+    ftgt.add_argument("--end", default=None, help="End date YYYY-MM-DD (default: today)")
+    ftgt.add_argument("--output", default="apod_archive", help="Output directory")
+    ftgt.add_argument("--api-key", default=None, help="NASA API key (env: NASA_API_KEY)")
+    ftgt.add_argument(
+        "--include-explanation", action="store_true",
+        help="Also match against the explanation text (slower, more false positives)",
+    )
+    ftgt.add_argument(
+        "--metadata-only", action="store_true",
+        help="Don't download images, just print matching titles + URLs",
+    )
+
     evaluate = sub.add_parser("evaluate", help="Run measurement pipeline on an image.")
     evaluate.add_argument("image", help="Path to image (FITS / TIFF / PNG / JPEG)")
     evaluate.add_argument("--json", action="store_true", help="Emit JSON metrics")
@@ -67,6 +88,28 @@ def main(argv: list[str] | None = None) -> int:
         client = ApodClient(api_key=args.api_key)
         n = fetch_range(client, start=args.start, end=args.end, output_dir=args.output)
         log.info("Fetched %d APOD entries to %s", n, args.output)
+        return 0
+
+    if args.command == "fetch-target":
+        from .apod_client import ApodClient, fetch_target
+
+        client = ApodClient(api_key=args.api_key)
+        fields = ("title", "explanation") if args.include_explanation else ("title",)
+        n, matched = fetch_target(
+            client,
+            pattern=args.pattern,
+            start=args.start,
+            end=args.end,
+            output_dir=args.output,
+            metadata_only=args.metadata_only,
+            fields=fields,
+        )
+        log.info(
+            "fetch-target: %d matched, %d downloaded (pattern=%r, fields=%s)",
+            len(matched), n, args.pattern, fields,
+        )
+        for e in matched:
+            print(f"  {e.date}  {e.title}")
         return 0
 
     if args.command == "evaluate":

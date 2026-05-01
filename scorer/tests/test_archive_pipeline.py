@@ -28,7 +28,9 @@ from apodornot.archive_pipeline import (
     "title,expected",
     [
         ("M31: The Andromeda Galaxy", "galaxy"),
-        ("The Orion Nebula", "emission_nebula"),
+        ("The Orion Nebula", "orion_nebula"),
+        ("NGC 2244: A Star Cluster in the Rosette Nebula", "rosette"),
+        ("Horsehead Dark Nebula", "horsehead"),
         ("Helix Nebula", "planetary_nebula"),
         ("Veil Nebula", "supernova_remnant"),
         ("Pleiades Star Cluster", "open_cluster"),
@@ -83,7 +85,7 @@ def test_build_archive_index_skips_videos_and_non_astrophotos(tmp_path):
     )
     entries = build_archive_index(tmp_path)
     assert {e.image_path.stem for e in entries} == {"2024-01-01", "2024-01-04"}
-    assert {e.category for e in entries} == {"galaxy", "emission_nebula"}
+    assert {e.category for e in entries} == {"galaxy", "orion_nebula"}
 
 
 def test_build_archive_index_handles_missing_dir(tmp_path):
@@ -156,7 +158,7 @@ def test_build_distributions_aggregates_by_category(tmp_path):
 
     dists = build_distributions(cache, archive)
     assert "galaxy" in dists.by_category
-    assert "emission_nebula" in dists.by_category
+    assert "orion_nebula" in dists.by_category
     assert "global" in dists.by_category
 
     galaxy = dists.by_category["galaxy"]

@@ -76,13 +76,31 @@ CATEGORY_RULES: tuple[CategoryRule, ...] = (
         "supernova_remnant",
         ("supernova remnant", "veil nebula", "cygnus loop", "crab nebula"),
     ),
+    # Per-target sub-categories of emission_nebula. These match BEFORE
+    # emission_nebula so a Rosette/Orion/Horsehead image is scored against
+    # same-target peers when enough samples exist.
+    CategoryRule(
+        "rosette",
+        ("rosette", "ngc 2237", "ngc 2238", "ngc 2239", "ngc 2244", "ngc 2246"),
+    ),
+    CategoryRule(
+        "orion_nebula",
+        ("orion nebula", "m42", "m 42 ", "ngc 1976", "trapezium"),
+    ),
+    CategoryRule(
+        "horsehead",
+        ("horsehead", "ic 434", "barnard 33", "b33"),
+    ),
+    CategoryRule(
+        "north_america_nebula",
+        ("north america nebula", "ngc 7000", "pelican nebula", "ic 5070"),
+    ),
     CategoryRule(
         "emission_nebula",
         (
             "emission nebula", "h ii region", "hii region", "h-alpha emission",
-            "orion nebula", "lagoon nebula", "trifid", "rosette", "north america nebula",
-            "horsehead", "tarantula nebula", "pelican nebula", "california nebula",
-            "seagull nebula",
+            "lagoon nebula", "trifid", "tarantula nebula", "california nebula",
+            "seagull nebula", "heart nebula", "soul nebula", "elephant's trunk",
         ),
     ),
     CategoryRule(
