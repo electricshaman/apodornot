@@ -486,21 +486,22 @@ defmodule ApodornotWebWeb.ScoreLive do
           </div>
           <span class="font-mono text-[10px] text-slate-600">{length(@diagnostics)}</span>
         </div>
-        <button :if={!@collapsed and !Enum.empty?(@diagnostics)}
-                type="button"
-                onclick={"event.stopPropagation(); navigator.clipboard.writeText(#{Jason.encode!(Enum.join(@diagnostics, "\n\n"))})"}
-                class="font-mono text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-200">
-          copy as markdown
-        </button>
       </button>
       <div :if={!@collapsed} class="px-5 pb-5">
         <div :if={Enum.empty?(@diagnostics)} class="text-slate-500 italic text-sm">
           No notable weaknesses.
         </div>
-        <div class="space-y-5 prose-findings">
+        <div :if={!Enum.empty?(@diagnostics)} class="space-y-5 prose-findings">
           <div :for={d <- @diagnostics}>
             {render_md(d)}
           </div>
+        </div>
+        <div :if={!Enum.empty?(@diagnostics)} class="mt-4 pt-4 border-t border-slate-800 flex justify-end">
+          <button type="button"
+                  onclick={"navigator.clipboard.writeText(#{Jason.encode!(Enum.join(@diagnostics, "\n\n"))})"}
+                  class="font-mono text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-200">
+            copy as markdown
+          </button>
         </div>
       </div>
     </div>
