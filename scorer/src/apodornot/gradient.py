@@ -1,0 +1,232 @@
+"""A5 — Gradient and calibration assessment.
+
+Fits a low-order polynomial surface and a radial vignetting model to the A1
+background map, and computes per-channel background levels for color-balance
+checks. These are the calibration / flat-fielding signature metrics.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+from scipy import optimize
+
+from .image_chars import SEG_BACKGROUND, ImageCharacterization
+from .logging import get_logger
+
+log = get_logger("apodornot.gradient")
+
+
+# ---------------------------------------------------------------------------- #
+# Data model
+# ---------------------------------------------------------------------------- #
+
+
+@dataclass
+class GradientResult:
+    poly_order: int
+    poly_coefficients: np.ndarray  # flattened — length depends on order
+    peak_to_peak: float            # max-min of fitted surface
+    noise_level: float             # median RMS used for normalization
+    gradient_ratio: float          # peak_to_peak / noise_level (3x ~ noticeable, 10x ~ bad)
+    direction_deg: float           # 0 = +x, 90 = +y; angle of steepest slope
+
+
+@dataclass
+class VignettingResult:
+    fit_succeeded: bool
+    center_to_corner_falloff: float  # fraction (0.05 = 5% darker in corners)
+    radial_amplitude: float
+    radial_power: float
+
+
+@dataclass
+class ColorBalanceResult:
+    bg_means: dict[str, float]
+    deviation_vector: tuple[float, float, float]   # signed deviations (R, G, B)
+    deviation_magnitude: float
+
+
+@dataclass
+class CalibrationAssessment:
+    gradient: GradientResult
+    vignetting: VignettingResult
+    color_balance: ColorBalanceResult | None
+
+    def summary(self) -> dict:
+        return {
+            "gradient_peak_to_peak": self.gradient.peak_to_peak,
+            "gradient_ratio": self.gradient.gradient_ratio,
+            "gradient_direction_deg": self.gradient.direction_deg,
+            "vignetting_falloff": self.vignetting.center_to_corner_falloff,
+            "color_balance_magnitude": (
+                self.color_balance.deviation_magnitude if self.color_balance else None
+            ),
+        }
+
+
+# ---------------------------------------------------------------------------- #
+# A5.1 — Gradient measurement
+# ---------------------------------------------------------------------------- #
+
+
+def _polyfit_surface(z: np.ndarray, order: int = 2) -> tuple[np.ndarray, np.ndarray]:
+    """Fit a polynomial surface of given order. Returns (coeffs, fitted)."""
+    h, w = z.shape
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+    xn = (xx - (w - 1) / 2.0) / max(w / 2.0, 1.0)
+    yn = (yy - (h - 1) / 2.0) / max(h / 2.0, 1.0)
+
+    cols = []
+    powers = []
+    for i in range(order + 1):
+        for j in range(order + 1 - i):
+            cols.append((xn**i) * (yn**j))
+            powers.append((i, j))
+    A = np.stack([c.ravel() for c in cols], axis=1)
+    b = z.ravel()
+    coeffs, *_ = np.linalg.lstsq(A, b, rcond=None)
+    fitted = (A @ coeffs).reshape(h, w)
+    return np.asarray(coeffs), fitted
+
+
+def measure_gradient(
+    background: np.ndarray, rms: np.ndarray, *, order: int = 2
+) -> GradientResult:
+    """Fit a low-order surface to the SEP background map and quantify gradient."""
+    coeffs, fitted = _polyfit_surface(background.astype(np.float64), order=order)
+    p2p = float(fitted.max() - fitted.min())
+    noise_level = float(np.median(rms))
+    ratio = p2p / max(noise_level, 1e-9)
+
+    # Direction of steepest descent: numerical gradient of fitted surface.
+    gy, gx = np.gradient(fitted)
+    direction = float(np.degrees(np.arctan2(float(gy.mean()), float(gx.mean()))) % 360.0)
+
+    return GradientResult(
+        poly_order=order,
+        poly_coefficients=coeffs,
+        peak_to_peak=p2p,
+        noise_level=noise_level,
+        gradient_ratio=ratio,
+        direction_deg=direction,
+    )
+
+
+# ---------------------------------------------------------------------------- #
+# A5.2 — Vignetting detection
+# ---------------------------------------------------------------------------- #
+
+
+def _radial_falloff(r: np.ndarray, center: float, amp: float, power: float) -> np.ndarray:
+    return center - amp * np.power(np.maximum(r, 0.0), power)
+
+
+def detect_vignetting(background: np.ndarray) -> VignettingResult:
+    """Fit center - amp * r^power; measure center-to-corner percentage falloff.
+
+    Down-samples the background map for speed.
+    """
+    h, w = background.shape
+    # Sub-sample to keep things fast; vignetting is a slow radial function.
+    step = max(1, min(h, w) // 128)
+    z = background[::step, ::step].astype(np.float64)
+    yy, xx = np.mgrid[0 : z.shape[0], 0 : z.shape[1]]
+    cy = (z.shape[0] - 1) / 2.0
+    cx = (z.shape[1] - 1) / 2.0
+    rmax = max(np.hypot(cx, cy), 1e-9)
+    r = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2) / rmax  # in [0, ~1]
+
+    z_flat = z.ravel()
+    r_flat = r.ravel()
+    p0 = [float(z_flat.max()), 0.05, 2.0]
+
+    try:
+        popt, _ = optimize.curve_fit(
+            _radial_falloff,
+            r_flat,
+            z_flat,
+            p0=p0,
+            bounds=([-np.inf, 0.0, 0.5], [np.inf, np.inf, 6.0]),
+            maxfev=200,
+        )
+        center, amp, power = popt
+        center_val = float(center)
+        corner_val = float(_radial_falloff(np.array([1.0]), center, amp, power)[0])
+        if abs(center_val) < 1e-9:
+            falloff = 0.0
+        else:
+            falloff = float((center_val - corner_val) / abs(center_val))
+        return VignettingResult(
+            fit_succeeded=True,
+            center_to_corner_falloff=falloff,
+            radial_amplitude=float(amp),
+            radial_power=float(power),
+        )
+    except (RuntimeError, ValueError):
+        return VignettingResult(
+            fit_succeeded=False,
+            center_to_corner_falloff=float("nan"),
+            radial_amplitude=float("nan"),
+            radial_power=float("nan"),
+        )
+
+
+# ---------------------------------------------------------------------------- #
+# A5.3 — Per-channel background color balance
+# ---------------------------------------------------------------------------- #
+
+
+def measure_color_balance(
+    color: np.ndarray, segmentation: np.ndarray
+) -> ColorBalanceResult | None:
+    """Per-channel background level + deviation from neutral gray."""
+    if color is None:
+        return None
+    bg_mask = segmentation == SEG_BACKGROUND
+    if not np.any(bg_mask):
+        return None
+
+    means = {}
+    for i, name in enumerate(("R", "G", "B")):
+        means[name] = float(np.median(color[..., i][bg_mask]))
+
+    avg = (means["R"] + means["G"] + means["B"]) / 3.0
+    if avg < 1e-9:
+        return ColorBalanceResult(bg_means=means, deviation_vector=(0.0, 0.0, 0.0), deviation_magnitude=0.0)
+
+    dev = (means["R"] - avg, means["G"] - avg, means["B"] - avg)
+    # Magnitude relative to the average background level — normalized.
+    mag = float(np.sqrt(sum(d * d for d in dev)) / avg)
+    return ColorBalanceResult(bg_means=means, deviation_vector=dev, deviation_magnitude=mag)
+
+
+# ---------------------------------------------------------------------------- #
+# Top-level A5 pipeline
+# ---------------------------------------------------------------------------- #
+
+
+def assess_calibration(chars: ImageCharacterization) -> CalibrationAssessment:
+    grad = measure_gradient(chars.background, chars.rms)
+    vig = detect_vignetting(chars.background)
+    cb = measure_color_balance(chars.color, chars.segmentation)
+    log.info(
+        "A5: gradient ratio %.2f, vignetting falloff %.3f, color dev %.4f",
+        grad.gradient_ratio,
+        vig.center_to_corner_falloff,
+        cb.deviation_magnitude if cb else float("nan"),
+    )
+    return CalibrationAssessment(gradient=grad, vignetting=vig, color_balance=cb)
+
+
+__all__ = [
+    "CalibrationAssessment",
+    "ColorBalanceResult",
+    "GradientResult",
+    "VignettingResult",
+    "assess_calibration",
+    "detect_vignetting",
+    "measure_color_balance",
+    "measure_gradient",
+]
