@@ -202,7 +202,7 @@ defmodule ApodornotWebWeb.ScoreLive do
         @scorecard && @chat_open && "ml-[420px]",
         @scorecard && !@chat_open && "ml-12"
       ]}>
-        <.session_bar image_filename={@image_filename} scorecard={@scorecard} />
+        <.session_bar image_filename={@image_filename} scorecard={@scorecard} chat_open={@chat_open} />
 
         <%= cond do %>
           <% @error -> %>
@@ -226,7 +226,10 @@ defmodule ApodornotWebWeb.ScoreLive do
 
   defp session_bar(assigns) do
     ~H"""
-    <div class="fixed top-0 left-0 right-0 px-6 py-3 flex justify-between items-center z-10 pointer-events-none">
+    <div
+      class="fixed top-0 right-0 px-6 py-3 flex justify-between items-center z-10 pointer-events-none transition-all"
+      style={"left: #{if @chat_open, do: "420px", else: "48px"}"}
+    >
       <a href={~p"/"} class="font-mono text-xs uppercase tracking-widest text-slate-500 hover:text-slate-300 pointer-events-auto">
         apodornot
       </a>
