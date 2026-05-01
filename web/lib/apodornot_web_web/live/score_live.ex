@@ -1,7 +1,7 @@
 defmodule ApodornotWebWeb.ScoreLive do
   use ApodornotWebWeb, :live_view
 
-  alias ApodornotWeb.PipelineRunner
+  alias ApodornotWeb.{ChatRunner, PipelineRunner}
   alias Phoenix.PubSub
 
   @pubsub ApodornotWeb.PubSub
@@ -20,7 +20,15 @@ defmodule ApodornotWebWeb.ScoreLive do
        image_filename: image_filename,
        scorecard: nil,
        error: nil,
-       selected_axis: nil
+       selected_axis: nil,
+       # Chat state
+       chat_open: false,
+       chat_messages: [],          # [%{role, content}]
+       chat_streaming: false,
+       chat_active_ref: nil,       # ref for the in-flight stream
+       chat_active_text: "",       # accumulating assistant text for the current turn
+       chat_tool_uses: [],         # tool_use events surfaced for the current turn
+       chat_draft: ""
      )
      |> stream_configure(:stages, dom_id: &"stage-#{&1["stage"]}")
      |> stream(:stages, [])}
@@ -41,6 +49,58 @@ defmodule ApodornotWebWeb.ScoreLive do
 
   def handle_info({"done", _}, socket), do: {:noreply, socket}
   def handle_info({"submission", _}, socket), do: {:noreply, socket}
+
+  def handle_info({:chat_event, ref, type, payload}, socket)
+      when ref != socket.assigns.chat_active_ref do
+    # Stale stream from a previous turn — ignore.
+    _ = {type, payload}
+    {:noreply, socket}
+  end
+
+  def handle_info({:chat_event, _ref, "token", %{"text" => text}}, socket) do
+    {:noreply, assign(socket, :chat_active_text, socket.assigns.chat_active_text <> text)}
+  end
+
+  def handle_info({:chat_event, _ref, "tool_use", payload}, socket) do
+    {:noreply,
+     assign(socket, :chat_tool_uses, socket.assigns.chat_tool_uses ++ [payload])}
+  end
+
+  def handle_info({:chat_event, _ref, "done", _}, socket) do
+    text = socket.assigns.chat_active_text
+    new_messages =
+      if text == "" do
+        socket.assigns.chat_messages
+      else
+        socket.assigns.chat_messages ++ [%{role: "assistant", content: text}]
+      end
+
+    {:noreply,
+     assign(socket,
+       chat_messages: new_messages,
+       chat_streaming: false,
+       chat_active_ref: nil,
+       chat_active_text: "",
+       chat_tool_uses: []
+     )}
+  end
+
+  def handle_info({:chat_event, _ref, "error", %{"message" => msg}}, socket) do
+    new_messages =
+      socket.assigns.chat_messages ++ [%{role: "assistant", content: "(error: #{msg})"}]
+
+    {:noreply,
+     assign(socket,
+       chat_messages: new_messages,
+       chat_streaming: false,
+       chat_active_ref: nil,
+       chat_active_text: "",
+       chat_tool_uses: []
+     )}
+  end
+
+  def handle_info({:chat_event, _ref, "close", _}, socket), do: {:noreply, socket}
+
   def handle_info(_, socket), do: {:noreply, socket}
 
   def handle_event("select_axis", %{"axis" => axis}, socket) do
@@ -49,6 +109,46 @@ defmodule ApodornotWebWeb.ScoreLive do
 
   def handle_event("close_drawer", _, socket) do
     {:noreply, assign(socket, :selected_axis, nil)}
+  end
+
+  def handle_event("toggle_chat", _, socket) do
+    {:noreply, assign(socket, :chat_open, !socket.assigns.chat_open)}
+  end
+
+  def handle_event("update_draft", %{"chat" => %{"draft" => draft}}, socket) do
+    {:noreply, assign(socket, :chat_draft, draft)}
+  end
+
+  def handle_event("send_chat", _params, %{assigns: %{scorecard: nil}} = socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("send_chat", _params, %{assigns: %{chat_streaming: true}} = socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("send_chat", _params, socket) do
+    draft = String.trim(socket.assigns.chat_draft || "")
+
+    if draft == "" do
+      {:noreply, socket}
+    else
+      messages = socket.assigns.chat_messages ++ [%{role: "user", content: draft}]
+      ref = make_ref()
+
+      ChatRunner.start(self(), ref, socket.assigns.scorecard, messages)
+
+      {:noreply,
+       socket
+       |> assign(
+         chat_messages: messages,
+         chat_draft: "",
+         chat_streaming: true,
+         chat_active_ref: ref,
+         chat_active_text: "",
+         chat_tool_uses: []
+       )}
+    end
   end
 
   def render(assigns) do
@@ -68,6 +168,16 @@ defmodule ApodornotWebWeb.ScoreLive do
         <% true -> %>
           <.loading_view stages={@streams.stages} />
       <% end %>
+
+      <.chat_widget
+        :if={@scorecard}
+        open={@chat_open}
+        messages={@chat_messages}
+        streaming={@chat_streaming}
+        active_text={@chat_active_text}
+        tool_uses={@chat_tool_uses}
+        draft={@chat_draft}
+      />
     </div>
     """
   end
@@ -266,6 +376,66 @@ defmodule ApodornotWebWeb.ScoreLive do
         </div>
       </div>
     </aside>
+    """
+  end
+
+  defp chat_widget(assigns) do
+    ~H"""
+    <%= if @open do %>
+      <div class="fixed bottom-0 right-0 z-50 w-[min(440px,100vw)] h-[min(620px,80vh)] bg-slate-900 border-l border-t border-slate-800 rounded-tl flex flex-col shadow-2xl">
+        <div class="flex justify-between items-center px-4 py-3 border-b border-slate-800">
+          <div class="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+            chat · grounded in your scorecard
+          </div>
+          <button phx-click="toggle_chat" class="text-slate-500 hover:text-slate-200 font-mono text-sm">
+            close
+          </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
+          <div :if={@messages == [] and not @streaming} class="text-slate-500 italic">
+            Ask anything about your scorecard. Claude has access to the metric knowledge base.
+          </div>
+
+          <div :for={m <- @messages} class={[
+            "leading-relaxed whitespace-pre-wrap",
+            m.role == "user" && "text-slate-300 font-mono text-xs uppercase tracking-wider before:content-['you_·_']",
+            m.role == "assistant" && "text-slate-100"
+          ]}>
+            {m.content}
+          </div>
+
+          <div :if={@streaming} class="text-slate-100 leading-relaxed whitespace-pre-wrap">
+            <span :if={@active_text != ""}>{@active_text}</span>
+            <span :for={t <- @tool_uses} class="block font-mono text-[10px] uppercase tracking-widest text-sky-400/70 mt-2">
+              ↳ checking {t["name"]}
+            </span>
+            <span :if={@active_text == "" and @tool_uses == []} class="text-slate-500 italic">claude is thinking…</span>
+          </div>
+        </div>
+
+        <form phx-submit="send_chat" phx-change="update_draft" class="border-t border-slate-800 p-3 flex gap-2">
+          <input
+            type="text"
+            name="chat[draft]"
+            value={@draft}
+            placeholder={if @streaming, do: "wait…", else: "ask about a metric, axis, or finding…"}
+            disabled={@streaming}
+            autocomplete="off"
+            class="flex-1 bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-sky-400 disabled:opacity-50"
+          />
+          <button type="submit" disabled={@streaming or String.trim(@draft) == ""}
+                  class="px-3 py-2 bg-sky-400 hover:bg-sky-300 text-slate-950 text-sm font-medium rounded disabled:opacity-30 disabled:cursor-not-allowed">
+            send
+          </button>
+        </form>
+      </div>
+    <% else %>
+      <button phx-click="toggle_chat"
+              class="fixed bottom-6 right-6 z-50 px-4 py-3 bg-sky-400 hover:bg-sky-300 text-slate-950 rounded-full font-medium shadow-lg">
+        ask claude
+      </button>
+    <% end %>
     """
   end
 
