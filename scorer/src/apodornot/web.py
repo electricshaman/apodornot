@@ -103,7 +103,7 @@ async def evaluate(image_path: str, target_type: str | None = None) -> Streaming
             sc = await loop.run_in_executor(
                 None, lambda: score_evaluation(ev, target_type=target_type)
             )
-            await queue.put(("scorecard", scorecard_to_dict(sc)))
+            await queue.put(("scorecard", scorecard_to_dict(sc, evaluation=ev)))
         except Exception as exc:
             log.exception("pipeline failed for %s", p)
             await queue.put(
@@ -138,6 +138,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     scorecard: dict[str, Any]
     messages: list[ChatMessage]
+    image_path: str | None = None
     archive_dir: str = "apod_archive"
 
 
@@ -156,7 +157,9 @@ async def chat(req: ChatRequest) -> StreamingResponse:
             async for event_type, payload in stream_chat(
                 scorecard=req.scorecard,
                 messages=messages,
+                image_path=req.image_path,
                 archive_dir=req.archive_dir,
+                max_tokens=2048,
             ):
                 yield _sse(event_type, payload)
         except Exception as exc:  # safety net — stream_chat already handles most
@@ -205,9 +208,15 @@ def _sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, default=str)}\n\n"
 
 
-def scorecard_to_dict(sc: ScoreCard) -> dict[str, Any]:
-    """Match the JSON shape documented in docs/ui-design-prompt.md."""
-    return {
+def scorecard_to_dict(sc: ScoreCard, *, evaluation=None) -> dict[str, Any]:
+    """Match the JSON shape documented in docs/ui-design-prompt.md.
+
+    If ``evaluation`` is provided, the per-stage diagnostic data (per-star
+    measurements, radial PSD curve, background heatmap, etc.) is included
+    under the ``diagnostics`` key so the UI can drive its visualizations
+    from real data instead of synthetic mockups.
+    """
+    payload = {
         "image_path": sc.image_path,
         "target_category": sc.target_category,
         "reference_category": sc.reference_category,
@@ -226,6 +235,9 @@ def scorecard_to_dict(sc: ScoreCard) -> dict[str, Any]:
                         "value": c.value,
                         "percentile": c.percentile,
                         "higher_is_better": c.higher_is_better,
+                        "label": c.label,
+                        "unit": c.unit,
+                        "format": c.format,
                     }
                     for c in ax.components
                 ],
@@ -239,11 +251,17 @@ def scorecard_to_dict(sc: ScoreCard) -> dict[str, Any]:
                 "percentile": m.percentile,
                 "higher_is_better": m.higher_is_better,
                 "quantiles": m.raw_quantiles,
+                "label": m.label,
+                "unit": m.unit,
+                "format": m.format,
             }
             for m in sc.metric_scores
         ],
         "diagnostics": sc.diagnostics,
     }
+    if evaluation is not None:
+        payload["stage_diagnostics"] = evaluation.to_summary().get("diagnostics", {})
+    return payload
 
 
 # ---------------------------------------------------------------------------- #

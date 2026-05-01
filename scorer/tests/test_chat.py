@@ -239,7 +239,7 @@ def test_chat_endpoint_streams_sse(monkeypatch):
 
     from apodornot import web
 
-    async def fake_stream(*, scorecard, messages, archive_dir):
+    async def fake_stream(*, scorecard, messages, image_path=None, archive_dir, max_tokens=None):
         yield ("token", {"text": "Hi "})
         yield ("token", {"text": "there."})
         yield ("done", {})

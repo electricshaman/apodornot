@@ -13,8 +13,11 @@ is the input.
 
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 from anthropic import AsyncAnthropic
@@ -36,10 +39,70 @@ DEFAULT_MODEL = "claude-sonnet-4-6"
 
 
 SYSTEM_TEMPLATE = """\
-You are an expert astrophotographer reviewing a quality evaluation produced by
-the apodornot pipeline. The user has submitted an image and received the
-scorecard below. Use the structured metrics to give specific, actionable feedback
-grounded in the actual scores — not generic advice.
+You are an expert astrophotographer reviewing the user's image. You have BOTH:
+
+  1. The submitted image itself (attached on the first user message), and
+  2. The apodornot pipeline's quantitative scorecard for it (below).
+
+# The grounding rule (critical)
+
+Every **recommendation** must be anchored to a poorly-scoring metric in the
+scorecard. The image is for *observation* — for naming the specific physical
+cause of a poor score that the metrics can detect but can't diagnose. The
+image is **not** a basis for action on its own.
+
+Why: general-purpose AI models are notoriously bad at evaluating
+astrophotography because they pattern-match on aesthetics with no calibrated
+internal standards. The whole point of this tool is to ground feedback in
+measurement. If you make a recommendation that no metric supports, you are
+re-introducing exactly the failure mode this tool exists to prevent.
+
+Concretely:
+
+  - You see HDR-decomposition crackle in the bright cavity of a nebula but
+    the relevant frequency-domain metrics are all in good standing →
+    **do not recommend a fix**. Note the observation as a separate caveat
+    ("worth a visual check") and move on.
+  - The autocorrelation width is at the 12th percentile (poor) and the image
+    has a soft, smeared appearance in faint regions → **recommend the fix**,
+    grounded in the metric. The image observation lets you be specific about
+    *where* the smearing shows up, but the metric is what justifies
+    recommending action.
+
+When you make a visual claim, cite the metric that supports it whenever
+possible ("Detail resolution is 95th percentile so the fine structure in the
+cavity rim is real spatial information, not synthesized detail").
+
+# How to structure a full review
+
+When the user asks for a general review ("what do you think?", "how does this
+look?"), respond in three sections:
+
+  ## What's working
+  Strengths grounded in metrics that scored well. Cite the percentile rank
+  for each claim. Use the image to add specific texture: name what you can
+  see that supports the metric story (e.g., "Star color diversity is 100th
+  percentile — you've kept the blue-white O-types around NGC 2244 distinct
+  from the warmer field stars").
+
+  ## Where to spend the next hour of editing
+  2–4 actionable items, in order of visible payoff. **Each item must name a
+  specific metric that scored poorly** (cite the percentile), use the image
+  to identify the most likely physical cause, and propose the specific lever
+  to pull. If no metric scored poorly enough to act on, this section can be
+  short or absent — say that honestly.
+
+  ## Visual observations (optional)
+  Things you see in the image that don't have a metric backing them. Frame
+  these as notes, not recommendations. Be explicit that they're un-anchored
+  ("the pipeline doesn't catch this — worth a visual check").
+
+  ## One sentence
+  A single-sentence verdict.
+
+When the user asks a focused question, skip the sectioning and answer
+directly. Same grounding rule applies: if your answer involves a recommendation,
+it must be anchored to a metric.
 
 # Score convention — read this carefully
 
@@ -141,6 +204,72 @@ TOOLS = [
 ]
 
 
+# Anthropic image API limits: 5 MB max per image (base64-encoded), and they
+# recommend ~1568 px on the long edge for best quality at lowest cost.
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024
+_MAX_IMAGE_LONG_EDGE = 1568
+
+
+def _image_content_block(image_path: str) -> dict[str, Any] | None:
+    """Build an Anthropic ``image`` content block from a local file path.
+
+    Downscales to <=1568px long edge and re-encodes as JPEG to keep the
+    base64 payload under Anthropic's 5 MB cap. Returns None for FITS / TIFF
+    or unreadable files (the chat falls back to scorecard-only).
+    """
+    p = Path(image_path)
+    if not p.exists():
+        log.warning("chat image not found at %s — falling back to scorecard-only", p)
+        return None
+
+    mime, _ = mimetypes.guess_type(str(p))
+    if mime not in {"image/jpeg", "image/png", "image/gif", "image/webp"}:
+        log.info("chat image %s has unsupported mime %s — scorecard-only", p, mime)
+        return None
+
+    try:
+        from PIL import Image
+        import io
+
+        with Image.open(p) as img:
+            img = img.convert("RGB")
+            w, h = img.size
+            long_edge = max(w, h)
+            if long_edge > _MAX_IMAGE_LONG_EDGE:
+                scale = _MAX_IMAGE_LONG_EDGE / long_edge
+                img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+
+            # Re-encode at quality 85 — well above Claude's perceptual threshold,
+            # well below 5 MB for any reasonable input.
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85, optimize=True)
+            data = buf.getvalue()
+
+            # If still too large (extremely rare at 1568px@q85), step quality down.
+            for q in (75, 65, 55):
+                if len(data) <= _MAX_IMAGE_BYTES:
+                    break
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=q, optimize=True)
+                data = buf.getvalue()
+
+        if len(data) > _MAX_IMAGE_BYTES:
+            log.warning("chat image still > 5MB after compression — skipping")
+            return None
+
+        return {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": base64.b64encode(data).decode("ascii"),
+            },
+        }
+    except OSError as exc:
+        log.warning("failed to load chat image %s: %s", p, exc)
+        return None
+
+
 def _execute_tool(name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
     """Local tool dispatch. Mirrors the MCP server's get_diagnostic_context."""
     if name == "get_diagnostic_context":
@@ -164,9 +293,10 @@ async def stream_chat(
     *,
     scorecard: dict[str, Any],
     messages: list[dict[str, Any]],
+    image_path: str | None = None,
     archive_dir: str = "apod_archive",
     model: str = DEFAULT_MODEL,
-    max_tokens: int = 1024,
+    max_tokens: int = 2048,
     api_key: str | None = None,
     client: AsyncAnthropic | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
@@ -196,6 +326,22 @@ async def stream_chat(
 
     system = _system_prompt(scorecard, reference_entries)
     history = [dict(m) for m in messages]  # avoid mutating caller's list
+
+    # Attach the image to the first user turn so Claude sees the actual photo,
+    # not just the metrics. Only on the first turn; subsequent turns reference
+    # it from conversation history.
+    if image_path:
+        image_block = _image_content_block(image_path)
+        if image_block is not None:
+            for i, msg in enumerate(history):
+                if msg.get("role") == "user":
+                    content = msg.get("content")
+                    if isinstance(content, str):
+                        msg["content"] = [image_block, {"type": "text", "text": content}]
+                    elif isinstance(content, list):
+                        msg["content"] = [image_block] + content
+                    history[i] = msg
+                    break
 
     # Tool-use loop: each turn streams text and may end with tool_use blocks.
     # If so, we execute the tools and run another turn.

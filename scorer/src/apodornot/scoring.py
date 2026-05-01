@@ -226,9 +226,12 @@ def _diag_bgchroma(pct: float, value: float, ctx: dict) -> str | None:
 class MetricScore:
     metric: str
     value: float | None
-    percentile: float            # 0..100, higher = better
+    percentile: float            # 0..100, higher = better (already direction-corrected)
     higher_is_better: bool
     raw_quantiles: dict[str, float] = field(default_factory=dict)
+    label: str = ""              # human-readable display name (e.g. "Median FWHM")
+    unit: str = ""               # display unit (e.g. "px", "cy/px")
+    format: str = "auto"         # number formatting hint: decimal | scientific | px | auto
 
 
 @dataclass
@@ -326,10 +329,14 @@ def select_reference_set(
 def score_metrics(
     summary: dict[str, Any], reference_metrics: dict[str, Any]
 ) -> list[MetricScore]:
+    from .metric_display import display_for
+
     out: list[MetricScore] = []
     for metric_name, metric_path, _hib in SCORING_METRICS:
         v = _get_path(summary, metric_path)
         ref = reference_metrics.get(metric_name)
+        disp = display_for(metric_name)
+
         if ref is None or ref.n == 0:
             out.append(
                 MetricScore(
@@ -338,6 +345,9 @@ def score_metrics(
                     percentile=float("nan"),
                     higher_is_better=_hib,
                     raw_quantiles={},
+                    label=disp["label"],
+                    unit=disp["unit"],
+                    format=disp["format"],
                 )
             )
             continue
@@ -349,6 +359,9 @@ def score_metrics(
                     percentile=float("nan"),
                     higher_is_better=ref.higher_is_better,
                     raw_quantiles=ref.quantiles,
+                    label=disp["label"],
+                    unit=disp["unit"],
+                    format=disp["format"],
                 )
             )
             continue
@@ -360,6 +373,9 @@ def score_metrics(
                 percentile=float(pct),
                 higher_is_better=ref.higher_is_better,
                 raw_quantiles=ref.quantiles,
+                label=disp["label"],
+                unit=disp["unit"],
+                format=disp["format"],
             )
         )
     return out

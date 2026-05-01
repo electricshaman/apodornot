@@ -20,6 +20,7 @@ def _no_progress(_stage: str, _status: str, _detail: str = "") -> None:
     """Default no-op progress callback."""
 
 from .color import ColorResult, analyze_color
+from .diagnostics import build_diagnostics
 from .gradient import CalibrationAssessment, assess_calibration
 from .image_chars import ImageCharacterization, characterize_image
 from .logging import get_logger
@@ -69,6 +70,12 @@ class EvaluationResult:
             "target_freq": self.target_freq.summary(),
             "calibration": self.calibration.summary(),
             "color": self.color.summary(),
+            "diagnostics": build_diagnostics(
+                chars=self.image_chars,
+                star_field=self.star_field,
+                noise=self.noise,
+                target_freq=self.target_freq,
+            ),
         }
 
     def text_report(self) -> str:
