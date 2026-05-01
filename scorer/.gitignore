@@ -51,8 +51,10 @@ coverage.xml
 # Project data (keep out of git — large + recreatable)
 apod_archive/
 apod_cache/
-data/
+/data/
 output/
+# Allow the bundled package data
+!src/apodornot/data/
 *.fits
 *.tif
 *.tiff

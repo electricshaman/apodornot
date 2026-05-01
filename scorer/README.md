@@ -4,13 +4,13 @@ Objective astrophotography quality evaluation, grounded in signal processing and
 NASA Astronomy Picture of the Day archive — not LLM guesswork.
 
 `apodornot` measures objective quality metrics on a submitted astrophoto, compares the
-results against reference distributions built from ~10,000 APOD images, and produces a
+results against reference distributions built from APOD archive images, and produces a
 diagnostic scorecard that pinpoints where the image is strong, where it's weak, and what
 the weak scores likely indicate about acquisition or processing mistakes.
 
-The measurement pipeline is deterministic. No LLMs in the evaluation loop. An optional
+The measurement pipeline is deterministic. **No LLMs in the evaluation loop.** An optional
 MCP server (A9) exposes the pipeline as tools that any MCP-compatible LLM client can call
-to handle the natural-language conversation around results.
+to handle the natural-language conversation around the results.
 
 ## Pipeline
 
@@ -27,24 +27,79 @@ to handle the natural-language conversation around results.
 | A8 | `archive_pipeline` | Batch processing of the APOD archive, distribution building |
 | A9 | `mcp_server` | MCP tools server (presentation layer) |
 
-## Quick start
+## Install
 
 ```bash
 python3.13 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
-
-# Download a few APOD images to play with (DEMO_KEY is rate-limited; get a real key at api.nasa.gov)
-apodornot fetch --start 2024-01-01 --end 2024-01-07 --output apod_archive/
-
-# Evaluate a single image
-apodornot evaluate path/to/image.fits
-
-# Score against APOD reference distributions
-apodornot score path/to/image.fits --target-type "emission nebula"
+pip install -e ".[dev,mcp]"
 ```
 
-## Status
+The bundled `src/apodornot/data/reference_distributions.json` ships a small seed
+distribution. To get a richer reference set, run the full archive pipeline (see below).
 
-This is an active build-out. Run `bd ready` to see the next available work, or `bd list`
-to see all tracked tasks.
+## CLI
+
+```bash
+# Download APOD entries to apod_archive/YYYY/YYYY-MM-DD.<ext> with JSON sidecars
+apodornot fetch --start 2024-01-01 --end 2024-01-31 --output apod_archive
+
+# Run the measurement pipeline on a single image (full structured metrics)
+apodornot evaluate path/to/image.fits
+
+# Score an image against the APOD reference distributions, optionally render radar
+apodornot score path/to/image.fits --target-type emission_nebula --radar /tmp/radar.png
+
+# Build the reference distributions from the archive
+apodornot build-archive --workers 8
+apodornot build-distributions
+
+# Run the MCP server (stdio for Claude Desktop / Claude Code)
+apodornot-mcp
+```
+
+## NASA API key
+
+The default is `DEMO_KEY` (30 req/hour, 50/day). Set `NASA_API_KEY` for production:
+
+```bash
+export NASA_API_KEY=your-key-from-api.data.nasa.gov
+```
+
+Image downloads go to `apod.nasa.gov` directly and do not count against the API
+rate limit — only metadata calls do.
+
+## MCP tools
+
+When run with the MCP server, an LLM client gets these tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `evaluate_image_tool` | Run A1–A6 on an image, return full metrics |
+| `score_image_tool` | Percentile-score an image against the APOD reference set |
+| `get_stage_detail` | Deep dive on a single stage's results |
+| `list_reference_matches` | Enumerate the APOD entries used as the reference |
+| `get_submission_history` | Trend-track a user's prior scorecards |
+| `get_diagnostic_context` | What a metric means + how to fix a poor score |
+
+The LLM never sees the raw image — only the structured metrics returned by the tools.
+
+## Tests
+
+```bash
+pytest                    # full suite (~50s, ~105 tests)
+pytest tests/test_apod_client.py    # one stage
+```
+
+End-to-end pipeline tests against a real APOD JPEG run automatically when
+`apod_archive/2024/2024-01-15.jpg` is present (downloaded via `apodornot fetch`).
+
+## Project tracking
+
+Issues are tracked locally with `bd` (beads):
+
+```bash
+bd ready          # next available work
+bd show <id>      # issue details
+bd list           # everything
+```
