@@ -41,9 +41,20 @@ class EvaluationResult:
     calibration: CalibrationAssessment
     color: ColorResult
     extras: dict[str, Any] = field(default_factory=dict)
+    # Cache the summary once built; build_diagnostics walks the background and
+    # segmentation arrays, which is several seconds on multi-100MB inputs and
+    # was being repeated by web.scorecard_to_dict.
+    _summary_cache: dict | None = field(default=None, repr=False, compare=False)
 
     def to_summary(self) -> dict:
         """Compact, JSON-serializable summary — what A7 / A8 consume."""
+        if self._summary_cache is not None:
+            return self._summary_cache
+        result = self._build_summary()
+        object.__setattr__(self, "_summary_cache", result)
+        return result
+
+    def _build_summary(self) -> dict:
         meta = self.image_chars.metadata
         return {
             "image": {
@@ -132,7 +143,10 @@ class EvaluationResult:
 def evaluate_image(
     path: str | Path,
     *,
-    max_stars: int = 100,
+    # 200 stabilizes the binned per-quadrant and per-color-bin metrics
+    # (~50 / 12 stars per bucket vs. the noisy ~25 / 8 we were getting at 100).
+    # Headline FWHM barely moves — its standard error already scales as 1/√N.
+    max_stars: int = 200,
     on_progress: ProgressCallback | None = None,
 ) -> EvaluationResult:
     """Run A1–A6 against a single image.

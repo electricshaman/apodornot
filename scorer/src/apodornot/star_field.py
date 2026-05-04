@@ -219,21 +219,72 @@ def _fit_one_star(
     )
 
 
+def _filter_clean_background(
+    stars: np.ndarray,
+    background: np.ndarray,
+    *,
+    bg_threshold_sigma: float = 3.0,
+    target_min: int,
+) -> np.ndarray:
+    """Drop stars sitting on locally-elevated background (e.g. nebula edges).
+
+    Embedded stars produce poor Moffat fits because the sky level varies
+    under the PSF. We compute a robust image-wide sky baseline (median +
+    1.4826 * MAD as σ), then reject stars whose local background sits
+    above ``median + bg_threshold_sigma * σ``.
+
+    Heavy-nebula targets (M42's core, Rosette interior) can have most of
+    the frame above the threshold. To avoid starving the fitter we never
+    fall below ``target_min`` — when the filter is too aggressive we keep
+    the ``target_min`` cleanest stars by sorting on local background level.
+    """
+    if len(stars) == 0:
+        return stars
+
+    flat_bg = background.ravel()
+    median_bg = float(np.median(flat_bg))
+    mad_bg = float(np.median(np.abs(flat_bg - median_bg))) * 1.4826  # robust σ
+    threshold = median_bg + bg_threshold_sigma * max(mad_bg, 1e-6)
+
+    x = np.clip(stars["x"].astype(int), 0, background.shape[1] - 1)
+    y = np.clip(stars["y"].astype(int), 0, background.shape[0] - 1)
+    local_bg = background[y, x]
+    keep_mask = local_bg <= threshold
+    n_kept = int(keep_mask.sum())
+
+    if n_kept >= target_min:
+        return stars[keep_mask]
+
+    # Fallback: sort by ascending local bg and take target_min cleanest.
+    order = np.argsort(local_bg, kind="stable")
+    return stars[order[:target_min]]
+
+
 def _select_representative_stars(
     catalog: SourceCatalog,
     image_shape: tuple[int, int],
     *,
     max_stars: int = 200,
+    background: np.ndarray | None = None,
     rng_seed: int = 0xA90D,
 ) -> np.ndarray:
     """Pick up to ``max_stars`` from ``catalog.stars`` while preserving field coverage.
 
     Splits the image into an ~sqrt(max_stars) x sqrt(max_stars) grid and samples
     one star per cell (the brightest), filling out remaining slots randomly.
+
+    When ``background`` is provided AND we have at least 2x the target count
+    available, candidates sitting on locally-elevated background (likely
+    embedded in nebulosity) are filtered out before grid-bucketing.
     """
     stars = catalog.stars
     if len(stars) <= max_stars:
         return stars
+
+    # Pre-filter for diffuse-nebula targets where many candidate stars sit
+    # on extended background and would distort Moffat fits.
+    if background is not None and len(stars) > max_stars * 2:
+        stars = _filter_clean_background(stars, background, target_min=max_stars * 2)
 
     h, w = image_shape
     cells = max(1, int(math.sqrt(max_stars)))
@@ -287,12 +338,15 @@ def fit_stars(
     *,
     max_stars: int = 200,
     cutout_half_size: int = 10,
+    background: np.ndarray | None = None,
 ) -> list[StarMeasurement]:
     """Fit a Moffat profile to a representative subset of detected stars."""
     if catalog.stars.shape[0] == 0:
         return []
 
-    selected = _select_representative_stars(catalog, image.shape, max_stars=max_stars)
+    selected = _select_representative_stars(
+        catalog, image.shape, max_stars=max_stars, background=background
+    )
     median_psf = max(catalog.median_psf_size, 1.0)
     initial_alpha = float(2.0 * median_psf)  # rough alpha guess
 
@@ -518,6 +572,7 @@ def analyze_star_field(
         chars.sources,
         max_stars=max_stars,
         cutout_half_size=cutout_half_size,
+        background=chars.background,
     )
     log.info("A2: fit %d stars", len(measurements))
     fv = analyze_field_variation(measurements, chars.luminance.shape)

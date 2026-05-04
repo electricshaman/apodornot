@@ -100,10 +100,23 @@ async def evaluate(image_path: str, target_type: str | None = None) -> Streaming
             ev = await loop.run_in_executor(
                 None, lambda: evaluate_image(str(p), on_progress=on_progress)
             )
+            log.info("evaluate_image returned; queueing A7 running")
+            on_progress("A7", "running", "scoring against reference set")
+            log.info("calling score_evaluation in executor")
             sc = await loop.run_in_executor(
                 None, lambda: score_evaluation(ev, target_type=target_type)
             )
-            await queue.put(("scorecard", scorecard_to_dict(sc, evaluation=ev)))
+            log.info("score_evaluation returned; queueing A7 done")
+            on_progress(
+                "A7",
+                "done",
+                f"overall {sc.overall_score:.0f}/100, vs {sc.reference_category} (n={sc.reference_n})",
+            )
+            log.info("building scorecard payload")
+            payload = scorecard_to_dict(sc, evaluation=ev)
+            log.info("scorecard payload built (%d keys); putting on queue", len(payload))
+            await queue.put(("scorecard", payload))
+            log.info("scorecard event enqueued")
         except Exception as exc:
             log.exception("pipeline failed for %s", p)
             await queue.put(
@@ -205,9 +218,31 @@ async def reference(target_type: str = "global", archive_dir: str = "apod_archiv
 # ---------------------------------------------------------------------------- #
 
 
+def _sanitize_json(obj: Any) -> Any:
+    """Replace non-finite floats (NaN, ±Infinity) with None recursively.
+
+    Python's ``json.dumps`` emits ``NaN`` / ``Infinity`` literals by default,
+    which are valid Python but **not** valid JSON per RFC 8259. Strict parsers
+    on the consumer side (e.g. Elixir's ``Jason``) reject those tokens, which
+    silently drops the SSE event downstream. Several pipeline metrics legitimately
+    return NaN for sparse/edge-case inputs (star_diversity on a target with
+    near-monochromatic stars, etc.) so we sanitize before serializing.
+    """
+    if isinstance(obj, float):
+        if obj != obj or obj == float("inf") or obj == float("-inf"):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_json(v) for v in obj]
+    return obj
+
+
 def _sse(event: str, payload: dict[str, Any]) -> str:
     """Format a Server-Sent Events frame."""
-    return f"event: {event}\ndata: {json.dumps(payload, default=str)}\n\n"
+    safe = _sanitize_json(payload)
+    return f"event: {event}\ndata: {json.dumps(safe, default=str, allow_nan=False)}\n\n"
 
 
 def scorecard_to_dict(sc: ScoreCard, *, evaluation=None) -> dict[str, Any]:

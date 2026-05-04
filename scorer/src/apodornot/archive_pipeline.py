@@ -210,6 +210,87 @@ def evaluation_cache_path(cache_dir: Path, image_path: Path) -> Path:
     return cache_dir / f"{image_path.stem}.eval.json"
 
 
+def _quarantine_path(cache_dir: Path, image_path: Path) -> Path:
+    """Path to a marker file indicating the image previously crashed a worker."""
+    return cache_dir / f"{image_path.stem}.quarantined.json"
+
+
+def _write_quarantine(cache_dir: Path, entry, reason: str) -> None:
+    import datetime as _dt
+    p = _quarantine_path(Path(cache_dir), Path(entry.image_path))
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({
+        "image_path": str(entry.image_path),
+        "reason": reason,
+        "quarantined_at": _dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+    }))
+
+
+def _process_pool_round(
+    todo, cache_dir, workers, progress, errors, by_category
+):
+    """Run one ProcessPoolExecutor 'round' over ``todo``.
+
+    Returns ``(inflight, completed_count)`` where ``inflight`` is the list of
+    entries that were submitted but never returned a result (i.e. were lost
+    when the pool broke). ``completed_count`` counts successful evaluations.
+
+    Worker pool death is the explicit recovery point: this function returns
+    cleanly so the caller can quarantine the in-flight set and keep going.
+    """
+    import random as _random
+    todo = list(todo)
+    _random.shuffle(todo)  # spread bad images across attempts
+
+    completed_count = 0
+    submitted: dict = {}
+    finished: set = set()
+
+    try:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            for e in todo:
+                fut = pool.submit(_evaluate_one_for_cache, str(e.image_path), str(cache_dir))
+                submitted[fut] = e
+            for fut in as_completed(submitted):
+                entry = submitted[fut]
+                finished.add(fut)
+                try:
+                    _, _summary, err = fut.result()
+                except Exception as exc:  # noqa: BLE001
+                    # Per-future BrokenProcessPool means THIS image crashed
+                    # its worker (the pool recovered, others completed). Same
+                    # image will keep crashing on retry — quarantine it.
+                    if "BrokenProcessPool" in type(exc).__name__:
+                        _write_quarantine(cache_dir, entry, "broken_process_pool")
+                        errors.append((str(entry.image_path), "BrokenProcessPool — quarantined"))
+                        if progress:
+                            log.warning("QUARANTINE %s — worker died on this image", entry.image_path.name)
+                    else:
+                        errors.append((str(entry.image_path), f"{type(exc).__name__}: {exc}"))
+                        if progress:
+                            log.warning("FAIL %s — %s", entry.image_path.name, exc)
+                    continue
+                if err is not None:
+                    errors.append((str(entry.image_path), err))
+                    if progress:
+                        log.warning("FAIL %s — %s", entry.image_path.name, err)
+                    continue
+                completed_count += 1
+                by_category[entry.category] = by_category.get(entry.category, 0) + 1
+                if progress:
+                    log.info("OK %s [%s]", entry.image_path.name, entry.category)
+    except Exception as exc:  # noqa: BLE001
+        # Pool died — futures that hadn't resolved are lost. Caller will
+        # quarantine them and respawn.
+        if "BrokenProcessPool" not in type(exc).__name__:
+            log.warning("pool round terminated with %s: %s", type(exc).__name__, exc)
+        else:
+            log.warning("pool died: %s", exc)
+
+    inflight = [submitted[f] for f in submitted if f not in finished]
+    return inflight, completed_count
+
+
 def _evaluate_one_for_cache(
     image_path: str, cache_dir: str
 ) -> tuple[str, dict[str, Any] | None, str | None]:
@@ -280,26 +361,55 @@ def run_archive(
             skipped += 1
             by_category[e.category] = by_category.get(e.category, 0) + 1
             continue
+        # Skip already-quarantined images so a known-bad input doesn't
+        # crash a worker again on the next run.
+        if not force and _quarantine_path(cache_dir, e.image_path).exists():
+            errors.append((str(e.image_path), "quarantined (previous worker crash)"))
+            continue
         todo.append(e)
 
     if todo and workers > 1:
-        with ProcessPoolExecutor(max_workers=workers) as pool:
-            futures = {
-                pool.submit(_evaluate_one_for_cache, str(e.image_path), str(cache_dir)): e
-                for e in todo
-            }
-            for fut in as_completed(futures):
-                entry = futures[fut]
-                _, summary, err = fut.result()
-                if err is not None:
-                    errors.append((str(entry.image_path), err))
-                    if progress:
-                        log.warning("FAIL %s — %s", entry.image_path.name, err)
-                    continue
-                processed += 1
-                by_category[entry.category] = by_category.get(entry.category, 0) + 1
-                if progress:
-                    log.info("OK %s [%s]", entry.image_path.name, entry.category)
+        # Architecture: a worker dying (C-level segfault in SEP/numpy/PIL on a
+        # pathological image) tears down the ProcessPoolExecutor entirely.
+        # We can't tell *which* of the in-flight futures was running on the
+        # dead worker. So we run small batches (workers * 2) per pool spawn —
+        # a death loses at most ~12 images of progress, and the unfinished
+        # batch goes BACK into the queue (re-randomized).
+        #
+        # Per-image BrokenProcessPool errors (a future resolves with that
+        # exception while the pool itself recovers) ARE attributable to a
+        # specific image — _process_pool_round writes a quarantine marker
+        # for those.
+        import random as _random
+        remaining = list(todo)
+        _random.shuffle(remaining)
+        batch_size = max(workers * 2, 8)
+        consecutive_no_progress = 0
+        while remaining:
+            batch = remaining[:batch_size]
+            tail = remaining[batch_size:]
+            inflight, completed = _process_pool_round(
+                batch, cache_dir, workers, progress, errors, by_category
+            )
+            processed += completed
+            # Unfinished batch members go back into the queue (after tail) so
+            # they get another shot in a different mix of co-runners.
+            remaining = [
+                e for e in tail + inflight
+                if not evaluation_cache_path(cache_dir, e.image_path).exists()
+                and not _quarantine_path(cache_dir, e.image_path).exists()
+            ]
+            if completed == 0 and not inflight:
+                # A whole batch came back with nothing accomplished AND no
+                # in-flight set (i.e. all futures resolved with errors but
+                # the pool didn't die mid-batch). That means we've hit a
+                # batch full of permanently-failing images; bail before we
+                # spin forever.
+                consecutive_no_progress += 1
+                if consecutive_no_progress >= 3:
+                    break
+            else:
+                consecutive_no_progress = 0
     else:
         for e in todo:
             _, summary, err = _evaluate_one_for_cache(str(e.image_path), str(cache_dir))

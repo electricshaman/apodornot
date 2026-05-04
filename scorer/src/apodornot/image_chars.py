@@ -321,24 +321,35 @@ def extract_sources(
     """
     import sep
 
-    # Bump the pixel stack limit once. SEP's default is 300k; 5M is enough
-    # for very nebulous frames at full resolution.
+    # Bump SEP's internal limits once. Defaults (300k pixstack, 1k sub-objects)
+    # overflow on highly nebulous or star-cluster frames; 5M and 100k are
+    # enough headroom for full-resolution APOD images.
     try:
         sep.set_extract_pixstack(5_000_000)
+    except Exception:
+        pass
+    try:
+        sep.set_sub_object_limit(100_000)
     except Exception:
         pass
 
     data = np.ascontiguousarray(background_subtracted, dtype=np.float32)
     err = np.ascontiguousarray(rms, dtype=np.float32)
 
-    for thresh in (threshold_sigma, threshold_sigma * 2.0, threshold_sigma * 4.0):
+    for thresh in (threshold_sigma, threshold_sigma * 2.0, threshold_sigma * 4.0, threshold_sigma * 8.0):
         try:
             return sep.extract(data, thresh, err=err, minarea=min_area)
         except Exception as exc:
-            if "pixel buffer full" in str(exc) or "pixstack" in str(exc):
+            msg = str(exc)
+            if (
+                "pixel buffer full" in msg
+                or "pixstack" in msg
+                or "deblending overflow" in msg
+                or "sub-objects" in msg
+            ):
                 log.warning(
-                    "SEP pixel buffer full at %.1f sigma; retrying at %.1f sigma",
-                    thresh, thresh * 2.0,
+                    "SEP overflow at %.1f sigma (%s); retrying at %.1f sigma",
+                    thresh, msg.split(".")[0], thresh * 2.0,
                 )
                 continue
             raise

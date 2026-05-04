@@ -629,14 +629,18 @@ def score_evaluation(
     distributions: ArchiveDistributions | None = None,
 ) -> ScoreCard:
     """Score an A1..A6 evaluation against the APOD reference distributions."""
+    log.info("A7: scoring start")
     if distributions is None:
+        log.info("A7: loading default distributions")
         distributions = load_default_distributions()
     if distributions is None:
         raise RuntimeError(
             "No reference distributions available. Run `apodornot build-archive` first."
         )
 
+    log.info("A7: building summary (incl. diagnostics payload)")
     summary = evaluation.to_summary()
+    log.info("A7: summary built; keys=%s", list(summary.keys()))
 
     # Resolve target category — explicit beats auto-detected.
     explicit = bool(target_type)
@@ -649,10 +653,18 @@ def score_evaluation(
         distributions, target_category, explicit=explicit
     )
     reference_n = max((d.n for d in metrics.values()), default=0)
+    log.info(
+        "A7: reference set = %s (n=%d), scoring metrics",
+        reference_category,
+        reference_n,
+    )
 
     metric_scores = score_metrics(summary, metrics)
+    log.info("A7: scored %d metrics, aggregating axes", len(metric_scores))
     axis_scores = aggregate_axes(metric_scores)
+    log.info("A7: generating diagnostics")
     diagnostics = generate_diagnostics(metric_scores, evaluation)
+    log.info("A7: diagnostics done (%d findings)", len(diagnostics))
 
     valid_axis_scores = [ax.score for ax in axis_scores if np.isfinite(ax.score)]
     overall = float(np.mean(valid_axis_scores)) if valid_axis_scores else float("nan")
