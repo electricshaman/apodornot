@@ -509,7 +509,17 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
     lo = p10 - (p25 - p10) * 0.5
     hi = p90 + (p90 - p75) * 0.5
     span = max(hi - lo, 1.0e-9)
-    x = fn v -> max(0.0, min(100.0, (v - lo) / span * 100)) end
+
+    # Always render the bar as "worst → best, left → right" so the user's
+    # marker position agrees with the rank_score interpretation.
+    # For lower-is-better metrics this inverts the raw-value axis (so the
+    # NUMERICALLY-LARGEST raw value, which is the worst, sits on the left).
+    x =
+      if assigns.higher_is_better do
+        fn v -> max(0.0, min(100.0, (v - lo) / span * 100)) end
+      else
+        fn v -> max(0.0, min(100.0, (hi - v) / span * 100)) end
+      end
 
     value =
       case assigns.value do
@@ -517,16 +527,38 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
         _ -> p50
       end
 
+    # The bar is always oriented worst (left) → best (right). For
+    # higher-is-better metrics, the LEFT label is "p10" (worst tail) and the
+    # RIGHT label is "p90" (best tail). For lower-is-better metrics the
+    # numeric order flips so the LEFT label becomes "p90" (worst, biggest
+    # value) and the RIGHT label is "p10" (best, smallest value).
+    {left_label, left_value, right_label, right_value} =
+      if assigns.higher_is_better do
+        {"p10", p10, "p90", p90}
+      else
+        {"p90", p90, "p10", p10}
+      end
+
+    # The "p25–p75" inner box: in raw-value mapping the box is between
+    # x.(p25) and x.(p75). For lower-better, x.(p25) > x.(p75) so we
+    # take min/max for safety.
+    box_lo = min(x.(p25), x.(p75))
+    box_hi = max(x.(p25), x.(p75))
+    whisker_lo = min(x.(p10), x.(p90))
+    whisker_hi = max(x.(p10), x.(p90))
+
     assigns = assign(assigns,
-      x_p10: round_(x.(p10), 1),
-      x_p25: round_(x.(p25), 1),
       x_p50: round_(x.(p50), 1),
-      x_p75: round_(x.(p75), 1),
-      x_p90: round_(x.(p90), 1),
       x_value: round_(x.(value), 1),
-      lbl_p10: format_num(p10),
+      x_box_lo: round_(box_lo, 1),
+      x_box_w: round_(box_hi - box_lo, 1),
+      x_whisker_lo: round_(whisker_lo, 1),
+      x_whisker_w: round_(whisker_hi - whisker_lo, 1),
+      left_label: left_label,
+      left_value: format_num(left_value),
+      right_label: right_label,
+      right_value: format_num(right_value),
       lbl_p50: format_num(p50),
-      lbl_p90: format_num(p90),
       lbl_value: format_num(value),
       accent: @accent,
       term_id: Map.get(@metric_to_term, assigns.metric),
@@ -548,13 +580,13 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
         </div>
       </div>
       <div class="flex justify-between font-mono text-[11px] text-slate-500 tabular-nums mb-1">
-        <span><Glossary.term id="p10">p10</Glossary.term> {@lbl_p10}</span>
+        <span><Glossary.term id={@left_label}>{@left_label}</Glossary.term> {@left_value}</span>
         <span><Glossary.term id="p50">p50</Glossary.term> {@lbl_p50}</span>
-        <span><Glossary.term id="p90">p90</Glossary.term> {@lbl_p90}</span>
+        <span><Glossary.term id={@right_label}>{@right_label}</Glossary.term> {@right_value}</span>
       </div>
       <svg viewBox="0 0 100 22" preserveAspectRatio="none" class="w-full block h-8">
-        <rect x={@x_p10} y="9" width={@x_p90 - @x_p10} height="4" fill="rgba(255,255,255,0.08)" />
-        <rect x={@x_p25} y="7" width={@x_p75 - @x_p25} height="8" fill="rgba(255,255,255,0.12)" />
+        <rect x={@x_whisker_lo} y="9" width={@x_whisker_w} height="4" fill="rgba(255,255,255,0.08)" />
+        <rect x={@x_box_lo} y="7" width={@x_box_w} height="8" fill="rgba(255,255,255,0.12)" />
         <line x1={@x_p50} y1="5" x2={@x_p50} y2="17" stroke="rgba(255,255,255,0.35)" stroke-width="1" />
         <line x1={@x_value} y1="2" x2={@x_value} y2="20" stroke={@accent} stroke-width="1.5" />
         <circle cx={@x_value} cy="11" r="2.5" fill={@accent} />

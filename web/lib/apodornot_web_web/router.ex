@@ -4,6 +4,7 @@ defmodule ApodornotWebWeb.Router do
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
+    plug ApodornotWebWeb.Plugs.RecentSubmissions
     plug :fetch_live_flash
     plug :put_root_layout, html: {ApodornotWebWeb.Layouts, :root}
     plug :protect_from_forgery

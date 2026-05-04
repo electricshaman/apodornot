@@ -41,12 +41,26 @@ defmodule ApodornotWeb.PipelineRunner do
         url,
         params: params,
         receive_timeout: :infinity,
-        into: fn {:data, chunk}, acc ->
-          for {event_type, payload} <- parse_sse(chunk) do
+        # The accumulator is a per-stream buffer of bytes that haven't yet
+        # ended in `\n\n`. Large events (the scorecard payload, which
+        # carries the per-stage diagnostics blob) routinely span multiple
+        # chunks, so we buffer until we see a terminator.
+        into: fn {:data, chunk}, {req, resp} ->
+          priv = resp.private || %{}
+          buf = Map.get(priv, :sse_buf, "") <> chunk
+          {events, rest} = drain_events(buf)
+
+          Logger.debug(
+            "PipelineRunner #{submission_id}: chunk=#{byte_size(chunk)}b " <>
+              "events=#{Enum.map(events, fn {t, _} -> t end) |> Enum.join(",")} " <>
+              "buffered=#{byte_size(rest)}b"
+          )
+
+          for {event_type, payload} <- events do
             PubSub.broadcast(@pubsub, topic(submission_id), {event_type, payload})
           end
 
-          {:cont, acc}
+          {:cont, {req, %{resp | private: Map.put(priv, :sse_buf, rest)}}}
         end
       )
     rescue
@@ -64,14 +78,37 @@ defmodule ApodornotWeb.PipelineRunner do
   end
 
   @doc false
-  # Naive SSE parser: assumes whole events per chunk. Good enough for localhost
-  # streams; for arbitrary chunk boundaries, buffer and split on \n\n only when
-  # the terminator is seen.
+  # Stateless one-shot parser: assumes whole events per chunk. Retained for
+  # the chat stream (per-token events are small) and for tests. New callers
+  # should use ``drain_events/1`` instead.
   def parse_sse(chunk) do
     chunk
     |> String.split("\n\n", trim: true)
     |> Enum.map(&parse_block/1)
     |> Enum.reject(&is_nil/1)
+  end
+
+  @doc false
+  # Pull complete `\n\n`-terminated events out of ``buf``, returning the
+  # parsed events plus whatever trailing partial event is still waiting for
+  # its terminator. Large events (scorecard, ~50 KB+ of stage diagnostics)
+  # routinely arrive across multiple TCP chunks; without this buffering the
+  # tail event was getting silently dropped.
+  def drain_events(buf) do
+    case String.split(buf, "\n\n") do
+      [tail] ->
+        {[], tail}
+
+      blocks_and_tail ->
+        {blocks, [tail]} = Enum.split(blocks_and_tail, -1)
+
+        events =
+          blocks
+          |> Enum.map(&parse_block/1)
+          |> Enum.reject(&is_nil/1)
+
+        {events, tail}
+    end
   end
 
   defp parse_block(block) do
@@ -84,8 +121,18 @@ defmodule ApodornotWeb.PipelineRunner do
       is_nil(data) -> {event, %{}}
       true ->
         case Jason.decode(data) do
-          {:ok, payload} -> {event, payload}
-          {:error, _} -> nil
+          {:ok, payload} ->
+            {event, payload}
+
+          {:error, err} ->
+            # Don't drop silently — events disappearing into the void cost
+            # us a debugging session when Python sent NaN literals. Log
+            # the failure so the next mismatch is obvious.
+            Logger.warning(
+              "PipelineRunner: dropped #{event} event, JSON decode failed: " <>
+                Exception.message(err) <> " (data preview: #{String.slice(data, 0, 200)})"
+            )
+            nil
         end
     end
   end

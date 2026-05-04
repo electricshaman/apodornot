@@ -2,19 +2,28 @@ defmodule ApodornotWebWeb.ScoreLive do
   use ApodornotWebWeb, :live_view
 
   alias ApodornotWeb.{ChatRunner, PipelineRunner, SubmissionStore}
-  alias ApodornotWebWeb.{AxisDiagnostics, Glossary}
+  alias ApodornotWebWeb.{AxisDiagnostics, Glossary, RecentMenu}
   alias Phoenix.PubSub
 
   @pubsub ApodornotWeb.PubSub
 
-  def mount(%{"submission_id" => id} = params, _session, socket) do
+  def mount(%{"submission_id" => id} = params, session, socket) do
     submission = SubmissionStore.get(id)
-    image_filename = submission[:image_basename] || Map.get(params, "image", "image")
-    equipment_context = submission[:equipment_context] || ""
+    recent_submissions =
+      session
+      |> Map.get("recent_submission_ids", [])
+      |> SubmissionStore.fetch_many()
+    image_filename = submission["image_basename"] || Map.get(params, "image", "image")
+    equipment_context = submission["equipment_context"] || ""
+    # Re-hydrate completed scorecards + chat from Redis on remount.
+    persisted_scorecard = submission["scorecard"]
+    persisted_chat_messages = submission["chat_messages"] || []
 
     if connected?(socket) do
       PubSub.subscribe(@pubsub, PipelineRunner.topic(id))
     end
+
+    chat_messages = atomize_message_roles(persisted_chat_messages)
 
     {:ok,
      socket
@@ -22,12 +31,12 @@ defmodule ApodornotWebWeb.ScoreLive do
        submission_id: id,
        image_filename: image_filename,
        equipment_context: equipment_context,
-       scorecard: nil,
+       scorecard: persisted_scorecard,
        error: nil,
        selected_axis: nil,
        # Chat state — open by default in the left sidebar
        chat_open: true,
-       chat_messages: [],          # [%{role, content}]
+       chat_messages: chat_messages,
        chat_streaming: false,
        chat_active_ref: nil,       # ref for the in-flight stream
        chat_active_text: "",       # accumulating assistant text for the current turn
@@ -39,7 +48,14 @@ defmodule ApodornotWebWeb.ScoreLive do
        # Glossary state — clicking a jargon term in the drawer opens the
        # explanation panel at the bottom; level toggle picks the depth.
        selected_term: nil,
-       glossary_level: "intermediate"
+       glossary_level: "intermediate",
+       # Visitor history (signed-cookie) for the top-bar dropdown.
+       recent_submissions: recent_submissions,
+       # Progress bar state — counts "done" events per unique stage.
+       # 7 stages emit progress: A1 A2 A3 A4 A5 A6 A7.
+       progress_done: MapSet.new(),
+       total_stages: 7,
+       progress_current: nil          # last "running" stage label
      )
      |> stream_configure(:stages, dom_id: &"stage-#{&1["stage"]}")
      |> stream(:stages, [])}
@@ -47,13 +63,36 @@ defmodule ApodornotWebWeb.ScoreLive do
 
   # Tag the row's id from the stage name so running → done overwrites in place.
   def handle_info({"stage", payload}, socket) do
+    socket = update_progress(socket, payload)
     {:noreply, stream_insert(socket, :stages, payload)}
   end
+
+  # Track unique completed stages + the current running label.
+  defp update_progress(socket, %{"stage" => stage, "status" => "done"}) do
+    assign(socket,
+      progress_done: MapSet.put(socket.assigns.progress_done, stage),
+      progress_current: nil
+    )
+  end
+  defp update_progress(socket, %{"stage" => stage, "status" => "running"}) do
+    assign(socket, progress_current: stage)
+  end
+  defp update_progress(socket, _), do: socket
 
   @auto_review_prompt "Please give me advice on how to improve this image."
 
   def handle_info({"scorecard", payload}, socket) do
-    socket = assign(socket, :scorecard, payload)
+    # Defensive: ensure the bar shows 100% even if A7 progress events were
+    # missed (older pipeline versions don't emit them).
+    full_set = MapSet.new(["A1", "A2", "A3", "A4", "A5", "A6", "A7"])
+    socket =
+      socket
+      |> assign(:scorecard, payload)
+      |> assign(:progress_done, full_set)
+      |> assign(:progress_current, nil)
+
+    persist_scorecard!(socket)
+
     # Once metrics are complete, auto-seed the chat with a review request —
     # but only if the user hasn't already started a conversation.
     if socket.assigns.chat_messages == [] and not socket.assigns.chat_streaming do
@@ -106,14 +145,17 @@ defmodule ApodornotWebWeb.ScoreLive do
         socket.assigns.chat_messages ++ [%{role: "assistant", content: text}]
       end
 
-    {:noreply,
-     assign(socket,
-       chat_messages: new_messages,
-       chat_streaming: false,
-       chat_active_ref: nil,
-       chat_active_text: "",
-       chat_tool_uses: []
-     )}
+    socket =
+      assign(socket,
+        chat_messages: new_messages,
+        chat_streaming: false,
+        chat_active_ref: nil,
+        chat_active_text: "",
+        chat_tool_uses: []
+      )
+
+    persist_chat!(socket)
+    {:noreply, socket}
   end
 
   def handle_info({:chat_event, _ref, "error", %{"message" => msg}}, socket) do
@@ -133,6 +175,32 @@ defmodule ApodornotWebWeb.ScoreLive do
   def handle_info({:chat_event, _ref, "close", _}, socket), do: {:noreply, socket}
 
   def handle_info(_, socket), do: {:noreply, socket}
+
+  # Redis is stable; if it's down we don't want to crash the LV. Failures
+  # surface as warnings via SubmissionStore's own logging, and the in-memory
+  # socket state remains correct for the live session.
+  defp persist_scorecard!(%{assigns: %{submission_id: id, scorecard: scorecard}}) when not is_nil(scorecard) do
+    SubmissionStore.put(id, %{scorecard: scorecard})
+  end
+  defp persist_scorecard!(_), do: :ok
+
+  defp persist_chat!(%{assigns: %{submission_id: id, chat_messages: messages}}) do
+    SubmissionStore.put(id, %{chat_messages: serialize_messages(messages)})
+  end
+
+  # Chat assigns use atom-keyed maps; Redis stores JSON with string keys.
+  # Atom-key on the way out, string-key on the way in, both deterministic.
+  defp serialize_messages(messages) do
+    Enum.map(messages, fn %{role: r, content: c} -> %{"role" => r, "content" => c} end)
+  end
+
+  defp atomize_message_roles(messages) when is_list(messages) do
+    Enum.map(messages, fn
+      %{"role" => r, "content" => c} -> %{role: r, content: c}
+      m when is_map(m) -> m
+    end)
+  end
+  defp atomize_message_roles(_), do: []
 
   def handle_event("select_axis", %{"axis" => axis}, socket) do
     {:noreply, assign(socket, :selected_axis, axis)}
@@ -211,6 +279,8 @@ defmodule ApodornotWebWeb.ScoreLive do
         active_text={@chat_active_text}
         tool_uses={@chat_tool_uses}
         draft={@chat_draft}
+        selected_term={@selected_term}
+        glossary_level={@glossary_level}
       />
 
       <div class={[
@@ -218,7 +288,13 @@ defmodule ApodornotWebWeb.ScoreLive do
         @scorecard && @chat_open && "ml-[420px]",
         @scorecard && !@chat_open && "ml-12"
       ]}>
-        <.session_bar image_filename={@image_filename} scorecard={@scorecard} chat_open={@chat_open} />
+        <.session_bar
+          image_filename={@image_filename}
+          scorecard={@scorecard}
+          chat_open={@chat_open}
+          recent_submissions={@recent_submissions}
+          current_id={@submission_id}
+        />
 
         <%= cond do %>
           <% @error -> %>
@@ -233,7 +309,12 @@ defmodule ApodornotWebWeb.ScoreLive do
               glossary_level={@glossary_level}
             />
           <% true -> %>
-            <.loading_view stages={@streams.stages} />
+            <.loading_view
+              stages={@streams.stages}
+              progress_done={@progress_done}
+              total_stages={@total_stages}
+              progress_current={@progress_current}
+            />
         <% end %>
       </div>
     </div>
@@ -243,26 +324,55 @@ defmodule ApodornotWebWeb.ScoreLive do
   # ----- function components ------------------------------------------------ #
 
   defp session_bar(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:recent_submissions, fn -> [] end)
+      |> assign_new(:current_id, fn -> nil end)
+
     ~H"""
     <div
       class="fixed top-0 right-0 px-6 py-3 flex justify-between items-center z-10 pointer-events-none transition-all"
       style={"left: #{if @chat_open, do: "420px", else: "48px"}"}
     >
-      <a href={~p"/"} class="font-mono text-xs uppercase tracking-widest text-slate-500 hover:text-slate-300 pointer-events-auto">
-        apodornot
-      </a>
-      <div :if={@scorecard} class="font-mono text-[10px] tracking-wider text-slate-600">
+      <div class="flex items-center gap-4 pointer-events-auto">
+        <a href={~p"/"} class="font-mono text-xs uppercase tracking-widest text-slate-500 hover:text-slate-300">
+          apodornot
+        </a>
+        <RecentMenu.recent_menu items={@recent_submissions} current_id={@current_id} />
+      </div>
+      <div :if={@scorecard && @scorecard["reference_category"]} class="font-mono text-[10px] tracking-wider text-slate-600">
         vs {String.upcase(@scorecard["reference_category"])} · n={@scorecard["reference_n"]}
       </div>
     </div>
     """
   end
 
+
   defp loading_view(assigns) do
+    done_count = MapSet.size(assigns.progress_done)
+    pct = round(done_count / assigns.total_stages * 100)
+    assigns = assign(assigns, done_count: done_count, pct: pct)
+
     ~H"""
     <div class="max-w-3xl mx-auto pt-32 px-8 pb-16">
       <div class="font-mono text-xs uppercase tracking-widest text-slate-500 mb-2">pipeline</div>
-      <div class="text-slate-300 mb-8">Measuring stages A1 → A6 against the APOD reference set.</div>
+      <div class="text-slate-300 mb-6">Measuring stages A1 → A7 against the APOD reference set.</div>
+
+      <div class="mb-8">
+        <div class="flex justify-between font-mono text-xs text-slate-500 mb-2">
+          <span>
+            {@done_count} / {@total_stages} stages
+            <span :if={@progress_current} class="text-sky-400">· {@progress_current} running</span>
+          </span>
+          <span>{@pct}%</span>
+        </div>
+        <div class="h-1.5 bg-slate-800 rounded overflow-hidden">
+          <div
+            class="h-full bg-sky-400 transition-all duration-300 ease-out"
+            style={"width: #{@pct}%"}
+          ></div>
+        </div>
+      </div>
 
       <div id="stage-log" phx-update="stream" class="font-mono text-sm space-y-1">
         <div :for={{dom_id, stage} <- @stages} id={dom_id} class="flex gap-4 items-baseline">
@@ -284,7 +394,7 @@ defmodule ApodornotWebWeb.ScoreLive do
   defp scorecard_view(assigns) do
     ~H"""
     <div class="max-w-6xl mx-auto px-8 pt-20 pb-16 space-y-6">
-      <.warning_banner :if={@scorecard["warnings"] != []} warnings={@scorecard["warnings"]} />
+      <.warning_banner :if={(@scorecard["warnings"] || []) != []} warnings={@scorecard["warnings"]} />
 
       <div class="grid grid-cols-[1fr_minmax(280px,360px)] gap-6">
         <.image_panel image_filename={@image_filename} scorecard={@scorecard} />
@@ -566,6 +676,11 @@ defmodule ApodornotWebWeb.ScoreLive do
   defp axis_term_id(_),                    do: nil
 
   defp chat_sidebar(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:selected_term, fn -> nil end)
+      |> assign_new(:glossary_level, fn -> "intermediate" end)
+
     ~H"""
     <%= if @open do %>
       <aside class="fixed left-0 top-0 bottom-0 w-[420px] bg-slate-900 border-r border-slate-800 flex flex-col z-30">
@@ -608,6 +723,12 @@ defmodule ApodornotWebWeb.ScoreLive do
           </div>
         </div>
 
+        <Glossary.explanation_panel
+          :if={@selected_term}
+          selected_term_id={@selected_term}
+          level={@glossary_level}
+        />
+
         <form phx-submit="send_chat" phx-change="update_draft" class="border-t border-slate-800 p-3 flex gap-2">
           <input
             type="text"
@@ -636,13 +757,14 @@ defmodule ApodornotWebWeb.ScoreLive do
     """
   end
 
-  # Render a markdown string as safe HTML. Earmark handles ###, **, lists,
-  # paragraphs, etc. The wrapping div applies prose-chat styles defined in
-  # the global CSS / Tailwind layer.
+  # Render a markdown string as safe HTML, then post-process to wrap any
+  # glossary term in a clickable button — so chat replies become explorable
+  # in the same panel that the stage drawer uses. The wrapping div applies
+  # prose-chat styles defined in the global CSS / Tailwind layer.
   defp render_md(md) when is_binary(md) do
     case Earmark.as_html(md, escape: true, smartypants: false) do
-      {:ok, html, _} -> Phoenix.HTML.raw(html)
-      {:error, html, _} -> Phoenix.HTML.raw(html)
+      {:ok, html, _} -> html |> Glossary.linkify_html() |> Phoenix.HTML.raw()
+      {:error, html, _} -> html |> Glossary.linkify_html() |> Phoenix.HTML.raw()
     end
   end
   defp render_md(_), do: ""

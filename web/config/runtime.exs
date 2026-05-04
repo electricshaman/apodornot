@@ -25,7 +25,9 @@ config :apodornot_web, ApodornotWebWeb.Endpoint,
 
 config :apodornot_web,
   pipeline_url: System.get_env("APODORNOT_PIPELINE_URL", "http://127.0.0.1:8000"),
-  upload_dir: System.get_env("APODORNOT_UPLOAD_DIR", "/tmp/apodornot_uploads")
+  upload_dir: System.get_env("APODORNOT_UPLOAD_DIR", "/tmp/apodornot_uploads"),
+  redis_url: System.get_env("REDIS_URL", "redis://127.0.0.1:6379"),
+  submission_ttl_seconds: String.to_integer(System.get_env("SUBMISSION_TTL_DAYS", "14")) * 86400
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.

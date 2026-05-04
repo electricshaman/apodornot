@@ -62,7 +62,9 @@ defmodule ApodornotWeb.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:req, "~> 0.5"},
-      {:earmark, "~> 1.4"}
+      {:earmark, "~> 1.4"},
+      {:redix, "~> 1.5"},
+      {:floki, "~> 0.36"}
     ]
   end
 

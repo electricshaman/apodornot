@@ -2,6 +2,7 @@ defmodule ApodornotWebWeb.UploadLive do
   use ApodornotWebWeb, :live_view
 
   alias ApodornotWeb.{PipelineRunner, SubmissionStore}
+  alias ApodornotWebWeb.RecentMenu
 
   @target_types ~w(auto rosette orion_nebula horsehead emission_nebula
                   reflection_nebula planetary_nebula galaxy globular_cluster
@@ -9,20 +10,24 @@ defmodule ApodornotWebWeb.UploadLive do
 
   @max_size 200_000_000
 
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     {:ok,
      socket
      |> assign(
        target_types: @target_types,
        target_type: "auto",
        equipment_context: "",
-       error: nil
+       error: nil,
+       recent_submissions: load_recent(session)
      )
      |> allow_upload(:image,
        accept: ~w(.tif .tiff .png .jpg .jpeg),
        max_file_size: @max_size,
        max_entries: 1,
-       auto_upload: false
+       # Start uploading as soon as the user picks a file, in parallel with
+       # them filling in target type / equipment context. Without this, a
+       # 100MB+ PNG can sit silently for ~30s after they hit "Evaluate".
+       auto_upload: true
      )}
   end
 
@@ -76,6 +81,9 @@ defmodule ApodornotWebWeb.UploadLive do
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-8 font-sans">
+      <div class="fixed top-0 left-0 right-0 px-6 py-3 flex items-center gap-4 z-10">
+        <RecentMenu.recent_menu items={@recent_submissions} />
+      </div>
       <div class="max-w-2xl w-full">
         <div class="font-mono text-xs uppercase tracking-widest text-slate-500 mb-4">
           apodornot
@@ -99,17 +107,27 @@ defmodule ApodornotWebWeb.UploadLive do
               <div class="text-slate-300">
                 {if Enum.empty?(@uploads.image.entries), do: "Choose an image", else: ""}
               </div>
-              <div :for={entry <- @uploads.image.entries} class="text-slate-200 font-mono text-sm">
-                {entry.client_name}
-                <span class="text-slate-500">· {round(entry.client_size / 1024)} KB</span>
-                <button
-                  type="button"
-                  phx-click="cancel"
-                  phx-value-ref={entry.ref}
-                  class="ml-3 text-rose-400 hover:underline"
-                >
-                  remove
-                </button>
+              <div :for={entry <- @uploads.image.entries} class="space-y-2">
+                <div class="text-slate-200 font-mono text-sm flex items-center justify-center gap-3">
+                  <span>{entry.client_name}</span>
+                  <span class="text-slate-500">· {format_size(entry.client_size)}</span>
+                  <span :if={entry.progress == 100} class="text-emerald-400">· ready</span>
+                  <span :if={entry.progress < 100} class="text-sky-400">· uploading {entry.progress}%</span>
+                  <button
+                    type="button"
+                    phx-click="cancel"
+                    phx-value-ref={entry.ref}
+                    class="text-rose-400 hover:underline"
+                  >
+                    remove
+                  </button>
+                </div>
+                <div :if={entry.progress < 100} class="h-1 bg-slate-800 rounded overflow-hidden mx-auto max-w-xs">
+                  <div
+                    class="h-full bg-sky-400 transition-all duration-150 ease-out"
+                    style={"width: #{entry.progress}%"}
+                  ></div>
+                </div>
               </div>
             </div>
           </label>
@@ -156,9 +174,14 @@ defmodule ApodornotWebWeb.UploadLive do
 
           <button
             type="submit"
-            class="w-full py-3 bg-sky-400 hover:bg-sky-300 text-slate-950 font-medium rounded transition-colors"
+            disabled={uploading?(@uploads.image)}
+            class="w-full py-3 bg-sky-400 hover:bg-sky-300 text-slate-950 font-medium rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-sky-400 flex items-center justify-center gap-2"
           >
-            Evaluate
+            <span
+              :if={uploading?(@uploads.image)}
+              class="inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"
+            ></span>
+            {if uploading?(@uploads.image), do: "Uploading…", else: "Evaluate"}
           </button>
         </form>
       </div>
@@ -171,7 +194,21 @@ defmodule ApodornotWebWeb.UploadLive do
   defp error_to_string(:too_many_files), do: "only one file at a time"
   defp error_to_string(other), do: to_string(other)
 
+  defp uploading?(upload_config) do
+    Enum.any?(upload_config.entries, fn e -> e.progress > 0 and e.progress < 100 end)
+  end
+
+  # Human-readable byte size — KB for small, MB for big.
+  defp format_size(bytes) when bytes >= 1_048_576, do: "#{Float.round(bytes / 1_048_576, 1)} MB"
+  defp format_size(bytes) when bytes >= 1024,      do: "#{round(bytes / 1024)} KB"
+  defp format_size(bytes), do: "#{bytes} B"
+
   defp random_id do
     :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
+  end
+
+  defp load_recent(session) do
+    ids = Map.get(session, "recent_submission_ids", [])
+    SubmissionStore.fetch_many(ids)
   end
 end

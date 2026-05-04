@@ -29,36 +29,47 @@
     "intermediate": "Star-color diversity (matching real stellar B–V variation), background neutrality (no color cast), and per-channel balance.",
     "advanced": "Star RGB ratio diversity vs B–V reference, background chromaticity distance from neutral, per-channel balance, plus narrowband palette detection (SHO/HOO/natural)."
   },
-
   "fwhm": {
     "label": "FWHM (full width at half maximum)",
-    "beginner": "How fat your stars are, in pixels. Smaller = sharper.",
-    "intermediate": "The width of a star's brightness profile at half its peak intensity. Measured in pixels; sets a hard floor on how much detail the image can resolve.",
+    "beginner": "How fat your stars look, in pixels. FWHM 3 means each star spreads its brightness over about 3 pixels — sharp. FWHM 6 means soft, mushy stars. Driven by atmospheric seeing, scope focus, guiding accuracy, and how heavily you sharpened in processing.",
+    "intermediate": "Full width at half maximum of a star's brightness profile in pixels. Sets the floor on resolvable detail — you cannot show structure finer than your FWHM. A combination of seeing, telescope diffraction, focus precision, and guide RMS. Sharpening can reduce apparent FWHM at the cost of ringing artifacts.",
     "advanced": "Full-width-at-half-maximum of the per-star fitted Moffat profile. Geometric mean of FWHM_a (major axis) and FWHM_b (minor axis). Drives the optical-system point spread function characterization."
   },
   "eccentricity": {
     "label": "Eccentricity",
-    "beginner": "How stretched (vs round) your stars are. 0 = perfectly round, near 1 = very streaky.",
+    "beginner": "Whether your stars are perfectly round or stretched. 0 means circle, near 1 means a thin streak. Healthy stars stay close to 0 across the whole frame. If they're stretched, the pattern tells you why: all stretched the same direction means tracking error; stretched outward from the center means optical aberration.",
     "intermediate": "Per-star ratio of the minor axis to the major axis, expressed as sqrt(1 − (b/a)²). Patterns across the frame diagnose tracking vs. optics.",
     "advanced": "From the Moffat fit's (a, b) parameters: ecc = sqrt(1 − (b/a)²). Field-wide patterns analyzed via double-angle weighted mean resultant length R + radial alignment score against the field center."
   },
   "psd": {
     "label": "Power spectral density (PSD)",
-    "beginner": "A graph showing how 'busy' your image is at small vs large scales. Used to fingerprint processing.",
-    "intermediate": "A frequency-domain decomposition: how much power exists at each spatial scale. Different processing steps (NR, sharpening) leave characteristic signatures here.",
+    "beginner": "A scan of how much fine detail vs broad structure your image has. Imagine breaking the image into 'tiny grain', 'medium texture', and 'big shapes' — the PSD measures how much of each is present. Used to catch processing damage: too much fine grain means oversharpening, too little means the noise reduction was heavy.",
+    "intermediate": "How power is distributed across spatial scales — high frequencies are tiny detail, low frequencies are broad structure. Different processing operations leave characteristic fingerprints: noise reduction kills the high end, sharpening boosts it, drizzle blurs it. The slope of the curve is a quick health check.",
     "advanced": "|FFT(image)|² azimuthally averaged into a 1D radial profile. White noise → flat. Suppressed mid/high frequencies → noise reduction. Boosted high frequencies → oversharpening."
   },
   "mtf50": {
     "label": "MTF50 / effective resolution",
-    "beginner": "The smallest detail your image actually preserves. Lower = sharper image.",
+    "beginner": "The smallest pattern your image can still show clearly. MTF50 of 5 pixels means anything finer than ~5 pixels is mush. Smaller is sharper. Driven by your scope's optics, the seeing on the night, your tracking, and how heavily you smoothed in processing.",
     "intermediate": "The spatial frequency at which the image's modulation transfer function drops to half its peak. A standard sharpness benchmark.",
     "advanced": "Modulation Transfer Function at 50% — the frequency where image contrast is halved from DC. Computed from the radial PSD's knee, comparable across systems."
   },
   "snr": {
     "label": "SNR (signal-to-noise ratio)",
-    "beginner": "How much real signal there is vs random noise. Higher = cleaner image.",
-    "intermediate": "Ratio of signal level to noise level — usually expressed in target regions, where you care about it most. More integration time is the most direct way to improve it.",
-    "advanced": "Per-pixel signal (background-subtracted luminance) divided by local noise (from the SEP RMS map). Reported as median + p90 over segmentation target pixels."
+    "beginner": "Whether the faint parts of your image look smooth or grainy. Zoom in on a dim part of the nebula — creamy texture means high SNR, fine static or sandiness means low SNR. The reliable fix is more total integration time; quadrupling time roughly doubles smoothness. Darker skies and a cooler sensor also help.",
+    "intermediate": "How much your real detail stands out above the random pixel-to-pixel jitter. If a faint nebula sits 50 ADU above sky and pixels wobble by ±10 ADU, SNR is 5 — the structure is 5× stronger than typical noise wiggles. Below SNR ~3 detail becomes indistinguishable from noise and stretching just amplifies grain. SNR scales as the square root of integration time, so 1h → 4h doubles it.",
+    "advanced": "Per-pixel signal (background-subtracted luminance) divided by local noise (from the SEP RMS map). Reported as median + p90 over segmentation target pixels. Numerator is set by aperture × QE × target surface brightness × integration time; denominator combines shot noise (∝ √(sky + target)), read noise per sub, and dark current. From a dark site shot noise dominates, so total integration is the leading lever for amateur setups."
+  },
+  "adu": {
+    "label": "ADU (analog-digital units)",
+    "beginner": "The numbers your camera reports for each pixel. They're proportional to brightness but the units are arbitrary — a value of 1000 in one camera isn't the same as 1000 in another. What matters is the ratio between values, not their absolute size.",
+    "intermediate": "Analog-to-Digital Units — the integer brightness value out of the sensor's ADC, before any photometric calibration. Cameras vary in gain (electrons per ADU); for relative measurements within one image (like SNR) the units cancel out.",
+    "advanced": "Output of the ADC stage. Linear in incident photoelectrons up to saturation and modulo gain. Conversion to electrons requires gain (e⁻/ADU) from the camera spec sheet; conversion to physical flux additionally requires aperture × QE × atmospheric extinction calibration."
+  },
+  "shot_noise": {
+    "label": "Shot noise",
+    "beginner": "The unavoidable graininess that comes from light arriving as countable particles. Even a perfect camera in a perfect dark sky produces a faint noisy texture. The only way to reduce it is to collect more photons — more integration time.",
+    "intermediate": "Statistical fluctuation in photon counts: for N detected photons the noise is √N. The dominant noise source from dark sites once subs are long enough to swamp read noise. Cannot be removed by better hardware — only by stacking more photons.",
+    "advanced": "Poisson noise on photoelectron arrivals: σ = √N where N includes target + sky background. Sets the fundamental SNR floor: SNR = N_target / √(N_sky + N_target + read_noise² × n_subs). Scales as √t and swamps read noise once per-sub sky counts ≫ read_noise² — typically at sub_duration ~ 60–300 s under Bortle 3–4 skies for cooled CMOS."
   },
   "autocorrelation": {
     "label": "Noise autocorrelation",
@@ -68,14 +79,14 @@
   },
   "gradient_ratio": {
     "label": "Gradient ratio",
-    "beginner": "How uneven your sky background is, scaled to your noise. >3× is noticeable, >10× is bad.",
+    "beginner": "How uneven the dark sky background is across your frame, measured in units of noise. The perfect image has flat sky. A gradient ratio of 3 means the sky tilts by 3× the noise level (visible on inspection); 10 is severe (one corner is clearly brighter than the other). Causes: light pollution, moon glow, flats that don't match the current optical setup.",
     "intermediate": "Peak-to-peak of a low-order polynomial fit to the background, normalized by the noise floor. Flags light-pollution gradients and bad flats.",
     "advanced": "Peak-to-peak of a 2nd-order polynomial surface fitted to the SEP background map, divided by the median local RMS. The normalization makes it scale-invariant; rule of thumb 3× ≈ visible, 10× ≈ serious."
   },
   "vignetting": {
     "label": "Vignetting",
-    "beginner": "When the corners of your image look dimmer than the center because of optics or bad flat frames.",
-    "intermediate": "Radial brightness falloff from the center to the corners. Real residual vignetting after calibration usually means flats don't match the current optical setup.",
+    "beginner": "When the corners of your image look dimmer than the center due to the optical path. A properly applied flat frame should remove it. If your scorecard shows residual vignetting, it usually means your flats don't match the current setup — different filter, refocus, or rotation since the flats were taken.",
+    "intermediate": "Radial brightness falloff from the optical axis to the corners, measured on the SEP background map after the main target is masked off. Real residual vignetting after calibration points to flats that don't match the active optical configuration — common after changing filters, refocusing, or rotating the camera.",
     "advanced": "Radial-falloff model fitted to background-mask pixels using shell-p10 robust binning (so a bright central target isn't misread as 'center brightness'). Reports center-to-corner percentage."
   },
   "psf": {
@@ -84,7 +95,6 @@
     "intermediate": "How a point source (a star) gets blurred by the atmosphere + optics + tracking + sensor sampling. Its width sets your image's resolution ceiling.",
     "advanced": "The system's response to an idealized point input. Modeled per-star with a Moffat profile (better wings than Gaussian). Sets the diffraction-limited cutoff frequency (~1/FWHM_px) above which target detail can't be physically real."
   },
-
   "vector_field": {
     "label": "Eccentricity vector field",
     "beginner": "A map showing each star as a tiny tick. The direction and length of the tick tells you how stretched the star is.",
@@ -145,7 +155,6 @@
     "intermediate": "A star's brightness in the blue filter minus its brightness in the visual filter — astronomy's standard color label, ranging from ~ −0.3 (hot blue) to ~ +1.8 (cool red).",
     "advanced": "Photometric color index B − V (Johnson-Cousins). Correlates with stellar effective temperature; used as the photometric ground truth for evaluating star-color preservation in processed images."
   },
-
   "percentile": {
     "label": "Rank score (percentile)",
     "beginner": "Your rank out of 100 compared to other images. 70 means you're better than 70 out of 100. Always 100 = best, regardless of which way the underlying metric goes.",
@@ -170,7 +179,6 @@
     "intermediate": "90% of comparison images score at or below this value. Useful as the 'aspirational' end of the distribution.",
     "advanced": "90th percentile of the reference distribution. Upper whisker on quantile plots; the high-tail benchmark."
   },
-
   "fixed_pattern_noise": {
     "label": "Fixed-pattern noise",
     "beginner": "Stripes, bars, or fixed glow patterns that show up in the dark sky regardless of the actual scene — usually means your dark or bias calibration frames don't match the lights.",
@@ -212,6 +220,17 @@
     "beginner": "How noisy the dark sky parts of your image are. Lower = cleaner.",
     "intermediate": "The standard deviation of pixel intensities in background-only regions. The fundamental noise floor of the image.",
     "advanced": "Sigma-clipped standard deviation of background-mask pixels per channel. The denominator in SNR; set by integration time, sensor read noise, dark current, and sky brightness."
+  },
+  "integration_time": {
+    "label": "Integration time",
+    "beginner": "Total time the camera was collecting light during the session — all your sub-exposures added up. 30 × 4-minute subs equals 2 hours of integration. The most direct lever for image quality on faint targets: quadrupling integration roughly doubles smoothness.",
+    "intermediate": "Sum of sub-exposure durations contributing to the stacked frame. SNR scales with √(integration time) under shot-noise-dominated conditions, so 1h → 4h doubles SNR; 1h → 9h triples it. Beyond ~10–20 hours diminishing returns set in as systematic effects (gradients, flat residuals) start to dominate.",
+    "advanced": "Cumulative on-source exposure: ∑(sub_duration × n_subs) per channel, exclusive of dithering / inter-sub overhead. Effective integration is reduced by frame rejection in stacking and by sub-frame quality weighting. SNR(t) ∝ √t in the shot-noise-limited regime; ∝ √(t / (t + read_noise² × n_subs / S²)) when read-noise-limited.",
+    "aliases": [
+      "integration",
+      "total integration",
+      "exposure time"
+    ]
   },
   "stellar_chroma": {
     "label": "Stellar chroma diversity",
