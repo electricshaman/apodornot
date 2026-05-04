@@ -9,6 +9,7 @@ defmodule ApodornotWebWeb.Router do
     plug :put_root_layout, html: {ApodornotWebWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug ApodornotWebWeb.Plugs.Passcode
   end
 
   pipeline :api do
@@ -17,6 +18,12 @@ defmodule ApodornotWebWeb.Router do
 
   scope "/", ApodornotWebWeb do
     pipe_through :browser
+
+    # Passcode plug allowlists "/healthz" and "/login" by path.
+    get "/healthz", HealthController, :show
+    get "/login", AuthController, :new
+    post "/login", AuthController, :create
+    post "/logout", AuthController, :delete
 
     live "/", UploadLive, :index
     live "/s/:submission_id", ScoreLive, :show

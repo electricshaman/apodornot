@@ -1,7 +1,7 @@
 defmodule ApodornotWebWeb.ScoreLive do
   use ApodornotWebWeb, :live_view
 
-  alias ApodornotWeb.{ChatRunner, PipelineRunner, SubmissionStore}
+  alias ApodornotWeb.{ChatBudget, ChatRunner, PipelineRunner, SubmissionStore}
   alias ApodornotWebWeb.{AxisDiagnostics, Glossary, RecentMenu}
   alias Phoenix.PubSub
 
@@ -94,23 +94,41 @@ defmodule ApodornotWebWeb.ScoreLive do
     persist_scorecard!(socket)
 
     # Once metrics are complete, auto-seed the chat with a review request —
-    # but only if the user hasn't already started a conversation.
-    if socket.assigns.chat_messages == [] and not socket.assigns.chat_streaming do
-      ref = make_ref()
-      messages = [%{role: "user", content: @auto_review_prompt}]
-      ChatRunner.start(self(), ref, payload, messages,
-        image_path: payload["image_path"],
-        equipment_context: socket.assigns.equipment_context)
-      {:noreply,
-       assign(socket,
-         chat_messages: messages,
-         chat_streaming: true,
-         chat_active_ref: ref,
-         chat_active_text: "",
-         chat_tool_uses: [])}
-    else
-      {:noreply, socket}
+    # but only if the user hasn't already started a conversation AND the
+    # daily chat budget hasn't been blown.
+    cond do
+      socket.assigns.chat_messages != [] or socket.assigns.chat_streaming ->
+        {:noreply, socket}
+
+      match?({:over, _, _}, ChatBudget.consume()) ->
+        {:noreply, assign(socket, chat_messages: [over_budget_message()])}
+
+      true ->
+        ref = make_ref()
+        messages = [%{role: "user", content: @auto_review_prompt}]
+        ChatRunner.start(self(), ref, payload, messages,
+          image_path: payload["image_path"],
+          equipment_context: socket.assigns.equipment_context)
+        {:noreply,
+         assign(socket,
+           chat_messages: messages,
+           chat_streaming: true,
+           chat_active_ref: ref,
+           chat_active_text: "",
+           chat_tool_uses: [])}
     end
+  end
+
+  # Surfaces in the chat thread when the global daily-cap is hit. Pipeline
+  # results stay visible; only the LLM is paused.
+  defp over_budget_message do
+    %{
+      role: "assistant",
+      content:
+        "The shared chat budget for today has been reached, so the reviewer is paused " <>
+          "until tomorrow. Your scorecard, findings, and the reference comparisons are still " <>
+          "available to read."
+    }
   end
 
   def handle_info({"error", payload}, socket) do
@@ -245,26 +263,34 @@ defmodule ApodornotWebWeb.ScoreLive do
   def handle_event("send_chat", _params, socket) do
     draft = String.trim(socket.assigns.chat_draft || "")
 
-    if draft == "" do
-      {:noreply, socket}
-    else
-      messages = socket.assigns.chat_messages ++ [%{role: "user", content: draft}]
-      ref = make_ref()
+    cond do
+      draft == "" ->
+        {:noreply, socket}
 
-      ChatRunner.start(self(), ref, socket.assigns.scorecard, messages,
-        image_path: socket.assigns.scorecard["image_path"],
-        equipment_context: socket.assigns.equipment_context)
+      match?({:over, _, _}, ChatBudget.consume()) ->
+        # User's draft is preserved in the input so they can retry tomorrow
+        # if they want; we only refuse the send.
+        messages = socket.assigns.chat_messages ++ [over_budget_message()]
+        {:noreply, assign(socket, chat_messages: messages)}
 
-      {:noreply,
-       socket
-       |> assign(
-         chat_messages: messages,
-         chat_draft: "",
-         chat_streaming: true,
-         chat_active_ref: ref,
-         chat_active_text: "",
-         chat_tool_uses: []
-       )}
+      true ->
+        messages = socket.assigns.chat_messages ++ [%{role: "user", content: draft}]
+        ref = make_ref()
+
+        ChatRunner.start(self(), ref, socket.assigns.scorecard, messages,
+          image_path: socket.assigns.scorecard["image_path"],
+          equipment_context: socket.assigns.equipment_context)
+
+        {:noreply,
+         socket
+         |> assign(
+           chat_messages: messages,
+           chat_draft: "",
+           chat_streaming: true,
+           chat_active_ref: ref,
+           chat_active_text: "",
+           chat_tool_uses: []
+         )}
     end
   end
 

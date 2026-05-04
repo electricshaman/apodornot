@@ -27,7 +27,14 @@ config :apodornot_web,
   pipeline_url: System.get_env("APODORNOT_PIPELINE_URL", "http://127.0.0.1:8000"),
   upload_dir: System.get_env("APODORNOT_UPLOAD_DIR", "/tmp/apodornot_uploads"),
   redis_url: System.get_env("REDIS_URL", "redis://127.0.0.1:6379"),
-  submission_ttl_seconds: String.to_integer(System.get_env("SUBMISSION_TTL_DAYS", "14")) * 86400
+  submission_ttl_seconds: String.to_integer(System.get_env("SUBMISSION_TTL_DAYS", "14")) * 86400,
+  # Shared invite-passcode for the soft gate. Unset/empty = no auth (dev).
+  # See ApodornotWebWeb.Plugs.Passcode.
+  passcode: System.get_env("APODORNOT_PASSCODE"),
+  # Daily cap on chat turns across ALL users (single-tenant invite scale).
+  # Each turn costs roughly $0.10-0.15 in Anthropic tokens. 0 or unset = no cap.
+  # See ApodornotWeb.ChatBudget.
+  daily_chat_turns_cap: String.to_integer(System.get_env("APODORNOT_DAILY_CHAT_TURNS_CAP", "0"))
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
