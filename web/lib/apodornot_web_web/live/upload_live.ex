@@ -8,7 +8,13 @@ defmodule ApodornotWebWeb.UploadLive do
                   reflection_nebula planetary_nebula galaxy globular_cluster
                   open_cluster supernova_remnant)
 
-  @max_size 200_000_000
+  # 50 MB cap. The pipeline can technically handle larger but the Python
+  # process holds the full pixel array + segmentation mask + per-stage
+  # diagnostics in RAM; a 139MB PNG hit ~18GB resident in testing. Capping
+  # at 50MB keeps a small Fly machine viable. APOD reference set is
+  # JPEGs averaging 1-3MB so we lose no comparability.
+  @max_size 50_000_000
+  @max_size_human "50 MB"
 
   def mount(_params, session, socket) do
     {:ok,
@@ -18,6 +24,7 @@ defmodule ApodornotWebWeb.UploadLive do
        target_type: "auto",
        equipment_context: "",
        error: nil,
+       max_size_human: @max_size_human,
        recent_submissions: load_recent(session)
      )
      |> allow_upload(:image,
@@ -89,9 +96,14 @@ defmodule ApodornotWebWeb.UploadLive do
           apodornot
         </div>
         <h1 class="text-3xl font-medium mb-2">Evaluate an astrophoto</h1>
-        <p class="text-slate-400 mb-8">
+        <p class="text-slate-400 mb-2">
           Drop a TIFF, PNG, or JPEG export of your finished image. The pipeline measures it against ~100 APOD reference images
           across noise, star quality, gradient, detail, and color.
+        </p>
+        <p class="text-slate-500 text-sm mb-8">
+          <span class="font-mono text-xs uppercase tracking-widest text-slate-600">limit</span>
+          {@max_size_human} per upload. The APOD reference set is JPEGs averaging 1–3 MB; if your
+          export is larger, downsize the long edge to ~3000–4000 px before uploading.
         </p>
 
         <form id="upload-form" phx-submit="submit" phx-change="validate" class="space-y-6">
@@ -189,9 +201,10 @@ defmodule ApodornotWebWeb.UploadLive do
     """
   end
 
-  defp error_to_string(:too_large), do: "file too large"
-  defp error_to_string(:not_accepted), do: "file type not accepted"
-  defp error_to_string(:too_many_files), do: "only one file at a time"
+  defp error_to_string(:too_large),
+    do: "File is over the #{@max_size_human} limit — please downsize the long edge to ~3000–4000 px and re-upload."
+  defp error_to_string(:not_accepted), do: "File type not accepted (TIFF, PNG, or JPEG only)."
+  defp error_to_string(:too_many_files), do: "Only one file at a time."
   defp error_to_string(other), do: to_string(other)
 
   defp uploading?(upload_config) do
