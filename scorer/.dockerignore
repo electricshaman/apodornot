@@ -1,0 +1,28 @@
+# Don't ship dev-only artifacts into the image.
+.venv
+.git
+.gitignore
+.beads
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+*.egg-info
+build
+dist
+
+# The image bundles src/apodornot/data/reference_distributions.json (3.2 MB)
+# which is the only ref data needed at runtime. The full archive cache is
+# build-time-only and would balloon the image by GBs.
+apod_archive
+apod_cache
+fits_archive
+
+# Local-only tmp files
+/tmp
+*.log
+.DS_Store
+
+# Test fixtures + outputs not needed at runtime
+tests/fixtures
+docs
