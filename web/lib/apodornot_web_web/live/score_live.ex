@@ -366,10 +366,27 @@ defmodule ApodornotWebWeb.ScoreLive do
         </a>
         <RecentMenu.recent_menu items={@recent_submissions} current_id={@current_id} />
       </div>
-      <div :if={@scorecard && @scorecard["reference_category"]} class="font-mono text-[10px] tracking-wider text-slate-600">
-        vs {String.upcase(@scorecard["reference_category"])} · n={@scorecard["reference_n"]}
+      <div class="flex items-center gap-4 pointer-events-auto">
+        <div :if={@scorecard && @scorecard["reference_category"]} class="font-mono text-[10px] tracking-wider text-slate-600">
+          vs {String.upcase(@scorecard["reference_category"])} · n={@scorecard["reference_n"]}
+        </div>
+        <.logout_form :if={ApodornotWebWeb.Plugs.Passcode.enabled?()} />
       </div>
     </div>
+    """
+  end
+
+  defp logout_form(assigns) do
+    ~H"""
+    <form method="post" action="/logout" class="m-0">
+      <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+      <button
+        type="submit"
+        class="font-mono text-[10px] uppercase tracking-widest text-slate-600 hover:text-slate-300 bg-transparent border-0 p-0 cursor-pointer"
+      >
+        sign out
+      </button>
+    </form>
     """
   end
 
