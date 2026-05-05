@@ -57,7 +57,11 @@ defmodule ApodornotWeb.SubmissionStore do
 
   def start_link do
     url = Application.fetch_env!(:apodornot_web, :redis_url)
-    Redix.start_link(url, name: @conn_name)
+    # ``:inet6`` is required on Fly because Upstash Redis hostnames only
+    # resolve via flycast IPv6 from inside the private network — without
+    # this, gen_tcp defaults to IPv4 and gets ``:nxdomain``, surfacing as
+    # ``%Redix.ConnectionError{reason: :closed}`` on every command.
+    Redix.start_link(url, name: @conn_name, socket_opts: [:inet6])
   end
 
   # ---- public API --------------------------------------------------------- #
@@ -77,13 +81,23 @@ defmodule ApodornotWeb.SubmissionStore do
 
     encoded = Jason.encode!(merged)
 
-    {:ok, _} =
-      Redix.transaction_pipeline(@conn_name, [
-        ["SET", key(submission_id), encoded, "EX", ttl()],
-        ["ZADD", @recent_set, unix_now(), submission_id],
-      ])
+    case Redix.transaction_pipeline(@conn_name, [
+           ["SET", key(submission_id), encoded, "EX", ttl()],
+           ["ZADD", @recent_set, unix_now(), submission_id]
+         ]) do
+      {:ok, _} ->
+        :ok
 
-    :ok
+      {:error, reason} ->
+        # Don't crash the LiveView on a Redis blip. Persistence is a
+        # convenience (history, rehydration); the live session keeps
+        # working out of socket assigns even if writes fail.
+        Logger.warning(
+          "SubmissionStore.put(#{submission_id}) failed: #{inspect(reason)}; continuing without persistence"
+        )
+
+        :ok
+    end
   end
 
   @doc """
