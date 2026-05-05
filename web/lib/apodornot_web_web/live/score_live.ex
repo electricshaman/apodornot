@@ -394,7 +394,12 @@ defmodule ApodornotWebWeb.ScoreLive do
   defp loading_view(assigns) do
     done_count = MapSet.size(assigns.progress_done)
     pct = round(done_count / assigns.total_stages * 100)
-    assigns = assign(assigns, done_count: done_count, pct: pct)
+    # ``waking?`` covers the gap between submit and the first stage event:
+    # the pipeline machine is auto-stop, so the first request after idle
+    # cold-starts the Python container (~5-15 s). Without a spinner here
+    # the page looks frozen during that window.
+    waking? = done_count == 0 and is_nil(assigns.progress_current)
+    assigns = assign(assigns, done_count: done_count, pct: pct, waking?: waking?)
 
     ~H"""
     <div class="max-w-3xl mx-auto pt-32 px-8 pb-16">
@@ -414,6 +419,18 @@ defmodule ApodornotWebWeb.ScoreLive do
             class="h-full bg-sky-400 transition-all duration-300 ease-out"
             style={"width: #{@pct}%"}
           ></div>
+        </div>
+      </div>
+
+      <div :if={@waking?} class="border border-slate-800 bg-slate-900/40 rounded p-4 mb-6 flex items-start gap-3">
+        <span class="inline-block w-4 h-4 border-2 border-sky-400 border-t-transparent rounded-full animate-spin shrink-0 mt-1"></span>
+        <div class="flex-1 min-w-0">
+          <div class="font-mono text-xs uppercase tracking-widest text-sky-400 mb-1">waking the pipeline</div>
+          <div class="text-slate-300 text-sm leading-relaxed">
+            The evaluation server idles when not in use to keep costs down. First request after idle
+            takes ~5-15 seconds to spin up before A1 begins. Subsequent uploads in this session will
+            start instantly.
+          </div>
         </div>
       </div>
 
