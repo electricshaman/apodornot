@@ -39,9 +39,7 @@ defmodule ApodornotWeb.ChatRunner do
         url,
         json: body,
         receive_timeout: :infinity,
-        # See PipelineRunner — Fly .internal is IPv6-only and Finch
-        # requires the keyword-tuple form (``family: :inet6``).
-        connect_options: [transport_opts: [family: :inet6]],
+        # IPv6 default is set BEAM-wide in rel/env.sh.eex.
         into: fn {:data, chunk}, acc ->
           for {event_type, payload} <- ApodornotWeb.PipelineRunner.parse_sse(chunk) do
             send(target, {:chat_event, ref, event_type, payload})

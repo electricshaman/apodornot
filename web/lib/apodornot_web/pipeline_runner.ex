@@ -41,13 +41,10 @@ defmodule ApodornotWeb.PipelineRunner do
         url,
         params: params,
         receive_timeout: :infinity,
-        # On Fly, ``<app>.internal`` only resolves over IPv6 flycast.
-        # Without ``family: :inet6`` Finch defaults to IPv4 → :nxdomain →
-        # PipelineRunner crashes with "non-existing domain" before the
-        # request ever leaves the machine. Finch validates transport_opts
-        # as a keyword list, so the bare ``:inet6`` atom won't pass — the
-        # tagged-tuple form is the right one here.
-        connect_options: [transport_opts: [family: :inet6]],
+        # IPv6 is forced BEAM-wide via inet_default_connect_options=[inet6]
+        # in rel/env.sh.eex — see that file for the why. Don't try to set it
+        # here via transport_opts: bare ``:inet6`` fails Finch's keyword
+        # validation, and ``family: :inet6`` isn't a real gen_tcp option.
         # The accumulator is a per-stream buffer of bytes that haven't yet
         # ended in `\n\n`. Large events (the scorecard payload, which
         # carries the per-stage diagnostics blob) routinely span multiple
