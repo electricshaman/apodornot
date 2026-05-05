@@ -457,7 +457,7 @@ defmodule ApodornotWebWeb.ScoreLive do
       <.warning_banner :if={(@scorecard["warnings"] || []) != []} warnings={@scorecard["warnings"]} />
 
       <div class="grid grid-cols-[1fr_minmax(280px,360px)] gap-6">
-        <.image_panel image_filename={@image_filename} scorecard={@scorecard} />
+        <.image_panel image_filename={@image_filename} scorecard={@scorecard} submission_id={@submission_id} />
         <.overall_score_panel scorecard={@scorecard} />
       </div>
 
