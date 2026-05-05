@@ -30,25 +30,31 @@ defmodule ApodornotWeb.PipelineRunner do
   defp run(submission_id, image_path, target_type) do
     url = pipeline_url() <> "/evaluate"
 
-    params =
-      [{"image_path", image_path}] ++
-        if(target_type in [nil, ""], do: [], else: [{"target_type", target_type}])
-
     Logger.info("PipelineRunner: starting #{submission_id} for #{image_path}")
 
+    # Phoenix and the pipeline run on separate Fly machines with separate
+    # filesystems, so we POST the image bytes as multipart instead of
+    # passing a path string. The pipeline writes the image into its own
+    # /data volume keyed by submission_id and returns that path in the
+    # ``submission`` SSE event for use by /chat later.
+    fields = [
+      submission_id: submission_id,
+      image: {File.read!(image_path), filename: Path.basename(image_path)}
+    ]
+
+    fields =
+      if target_type in [nil, ""],
+        do: fields,
+        else: fields ++ [target_type: target_type]
+
     try do
-      Req.get!(
+      Req.post!(
         url,
-        params: params,
+        form_multipart: fields,
         receive_timeout: :infinity,
-        # IPv6 is forced BEAM-wide via inet_default_connect_options=[inet6]
-        # in rel/env.sh.eex — see that file for the why. Don't try to set it
-        # here via transport_opts: bare ``:inet6`` fails Finch's keyword
-        # validation, and ``family: :inet6`` isn't a real gen_tcp option.
-        # The accumulator is a per-stream buffer of bytes that haven't yet
-        # ended in `\n\n`. Large events (the scorecard payload, which
-        # carries the per-stage diagnostics blob) routinely span multiple
-        # chunks, so we buffer until we see a terminator.
+        # SSE: per-stream buffer of bytes that haven't yet ended in
+        # ``\n\n``. The scorecard event is ~30-50 KB and routinely spans
+        # multiple TCP chunks, so we buffer until we see a terminator.
         into: fn {:data, chunk}, {req, resp} ->
           priv = resp.private || %{}
           buf = Map.get(priv, :sse_buf, "") <> chunk
