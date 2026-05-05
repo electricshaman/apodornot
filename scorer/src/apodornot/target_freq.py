@@ -151,19 +151,32 @@ def fit_power_law(
 def estimate_effective_resolution(freqs: np.ndarray, radial: np.ndarray) -> float:
     """Frequency at which the power spectrum levels off into the noise floor.
 
-    We define the noise floor as the median power above ``f = 0.4 cycles/px`` and
-    find the lowest frequency above ``f = 0.05`` where smoothed power drops within
-    1.5x of that floor.
+    The noise floor is estimated from the **plateau** band ``f ∈ [0.2, 0.4]``,
+    not from ``f >= 0.4``. The previous algorithm used the high-frequency tail
+    as the floor reference, but that band is typically already in the
+    Nyquist / anti-alias roll-off — the power there is artificially low,
+    so the ``1.5 * floor`` threshold was only crossed deep in the roll-off,
+    pinning the reported knee at the very right edge of the chart instead
+    of the actual signal-to-noise transition.
+
+    Knee detection: lowest frequency above 0.05 where the smoothed power
+    drops within 1.5x of the plateau floor.
     """
     if radial.size < 16:
         return float("nan")
-    floor_band = (freqs >= 0.4)
-    if not np.any(floor_band):
+
+    # Use the plateau band (between low-f signal decline and Nyquist
+    # roll-off) as the noise-floor reference.
+    plateau_band = (freqs >= 0.2) & (freqs <= 0.4)
+    if not np.any(plateau_band):
         return float("nan")
-    floor = float(np.median(radial[floor_band]))
+    floor = float(np.median(radial[plateau_band]))
     if floor <= 0:
         return float("nan")
-    # Smooth the radial profile and find the knee.
+
+    # Smooth the radial profile to dampen single-bin noise, then find the
+    # first frequency above 0.05 where smoothed power has dropped within
+    # 1.5x of the plateau.
     smoothed = np.convolve(radial, np.ones(5) / 5, mode="same")
     candidates = np.where((freqs > 0.05) & (smoothed < 1.5 * floor))[0]
     if candidates.size == 0:
