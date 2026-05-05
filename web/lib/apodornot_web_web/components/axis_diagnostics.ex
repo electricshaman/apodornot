@@ -314,9 +314,23 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
         nil
       end
 
+    # Decade ticks for the log-x axis. Caps at a few sensible values
+    # within the actual frequency range.
+    log_f_min = :math.log10(f_min)
+    log_f_max = :math.log10(f_max)
+
+    x_ticks =
+      [0.01, 0.02, 0.05, 0.1, 0.2, 0.5]
+      |> Enum.filter(fn v -> v >= f_min and v <= f_max end)
+      |> Enum.map(fn v ->
+        log_v = :math.log10(v)
+        x = (log_v - log_f_min) / max(log_f_max - log_f_min, 1.0e-9) * w
+        {v, x}
+      end)
+
     assigns = assign(assigns,
       w: w, h: h, path: path, eff_res_x: eff_res_x,
-      eff_res: eff_res, slope: slope, accent: @accent
+      eff_res: eff_res, slope: slope, x_ticks: x_ticks, accent: @accent
     )
 
     ~H"""
@@ -333,16 +347,32 @@ defmodule ApodornotWebWeb.AxisDiagnostics do
           <line x1="0" y1={20 + d / 4 * (@h - 40)} x2={@w} y2={20 + d / 4 * (@h - 40)}
                 stroke="rgba(255,255,255,0.06)" />
         </g>
-        <line :if={@eff_res_x} x1={@eff_res_x} y1="10" x2={@eff_res_x} y2={@h - 10}
+
+        <%!-- decade x-axis ticks + labels --%>
+        <g :for={{val, tx} <- @x_ticks}>
+          <line x1={tx} y1={@h - 24} x2={tx} y2={@h - 18}
+                stroke="rgba(255,255,255,0.35)" />
+          <text x={tx} y={@h - 6} fill="rgba(255,255,255,0.55)"
+                text-anchor="middle" font-family="ui-monospace, monospace" font-size="9">
+            {val}
+          </text>
+        </g>
+
+        <line :if={@eff_res_x} x1={@eff_res_x} y1="10" x2={@eff_res_x} y2={@h - 24}
               stroke={@accent} stroke-opacity="0.5" stroke-dasharray="3 3" />
-        <text :if={@eff_res_x} x={@eff_res_x + 4} y="20" fill={@accent}
+        <%!-- anchor label on whichever side has more room --%>
+        <text :if={@eff_res_x}
+              x={if @eff_res_x > @w / 2, do: @eff_res_x - 4, else: @eff_res_x + 4}
+              y="20" fill={@accent}
+              text-anchor={if @eff_res_x > @w / 2, do: "end", else: "start"}
               font-family="ui-monospace, monospace" font-size="10">
           eff res = {format_num(@eff_res)} cy/px
         </text>
         <path d={@path} fill="none" stroke={@accent} stroke-width="1.4" />
-        <text x={@w - 80} y={@h - 6} fill="rgba(255,255,255,0.4)"
+        <text x={@w - 6} y="12" fill="rgba(255,255,255,0.4)"
+              text-anchor="end"
               font-family="ui-monospace, monospace" font-size="9">
-          frequency (log) →
+          frequency (cy/px, log)
         </text>
       </svg>
     </.diag_frame>
