@@ -28,12 +28,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -77,14 +78,28 @@ async def healthz() -> dict[str, str]:
 # ---------------------------------------------------------------------------- #
 
 
-@app.get("/evaluate")
-async def evaluate(image_path: str, target_type: str | None = None) -> StreamingResponse:
-    """Run A1–A6 + scoring on ``image_path``, streaming stage events via SSE."""
-    p = Path(image_path)
-    if not p.exists():
-        raise HTTPException(status_code=404, detail=f"image not found: {image_path}")
+@app.post("/evaluate")
+async def evaluate(
+    image: UploadFile = File(...),
+    target_type: str | None = Form(default=None),
+    submission_id: str | None = Form(default=None),
+) -> StreamingResponse:
+    """Run A1–A6 + scoring on the uploaded ``image``, streaming events via SSE.
 
-    submission_id = str(uuid.uuid4())
+    The pipeline service stores the image in its own volume
+    (``$APODORNOT_UPLOAD_DIR``) keyed by submission_id so that subsequent
+    /chat calls can find it. Phoenix sends the bytes via multipart so the
+    two machines don't need to share a filesystem.
+    """
+    submission_id = submission_id or str(uuid.uuid4())
+    upload_dir = Path(os.environ.get("APODORNOT_UPLOAD_DIR", "/tmp/apodornot_uploads"))
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = Path(image.filename or "upload.bin").name
+    p = upload_dir / f"{submission_id}_{safe_name}"
+    contents = await image.read()
+    p.write_bytes(contents)
+    log.info("evaluate: stored %d bytes at %s", len(contents), p)
+
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
 
@@ -128,7 +143,12 @@ async def evaluate(image_path: str, target_type: str | None = None) -> Streaming
     asyncio.create_task(run_pipeline())
 
     async def event_stream():
-        yield _sse("submission", {"submission_id": submission_id})
+        # Phoenix needs the pipeline-side image_path to call /chat later
+        # (chat reads the file off the pipeline's filesystem too).
+        yield _sse(
+          "submission",
+          {"submission_id": submission_id, "image_path": str(p)},
+        )
         while True:
             event_type, payload = await queue.get()
             yield _sse(event_type, payload)
