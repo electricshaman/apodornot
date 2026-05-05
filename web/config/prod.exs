@@ -15,7 +15,12 @@ config :apodornot_web, ApodornotWebWeb.Endpoint,
   force_ssl: [
     rewrite_on: [:x_forwarded_proto],
     exclude: [
-      # paths: ["/health"],
+      # /healthz is hit by Fly's internal health checker via plain HTTP on
+      # the machine's private IP — it doesn't go through Fly's edge proxy
+      # and so doesn't have :x_forwarded_proto. Without this exclusion the
+      # redirect-to-HTTPS turns the health check into a 301 and the machine
+      # never reaches the "healthy" state.
+      paths: ["/healthz"],
       hosts: ["localhost", "127.0.0.1"]
     ]
   ]
