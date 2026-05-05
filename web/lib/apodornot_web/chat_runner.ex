@@ -39,6 +39,8 @@ defmodule ApodornotWeb.ChatRunner do
         url,
         json: body,
         receive_timeout: :infinity,
+        # See PipelineRunner — Fly .internal hostnames are IPv6-only.
+        connect_options: [transport_opts: [:inet6]],
         into: fn {:data, chunk}, acc ->
           for {event_type, payload} <- ApodornotWeb.PipelineRunner.parse_sse(chunk) do
             send(target, {:chat_event, ref, event_type, payload})
