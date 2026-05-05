@@ -329,6 +329,7 @@ defmodule ApodornotWebWeb.ScoreLive do
             <.scorecard_view
               scorecard={@scorecard}
               image_filename={@image_filename}
+              submission_id={@submission_id}
               selected_axis={@selected_axis}
               findings_collapsed={@findings_collapsed}
               selected_term={@selected_term}
