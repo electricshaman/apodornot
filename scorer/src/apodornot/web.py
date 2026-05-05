@@ -34,8 +34,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from .archive_pipeline import build_archive_index
@@ -71,6 +71,27 @@ app = FastAPI(title="apodornot", lifespan=lifespan)
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/image/{submission_id}")
+async def image(submission_id: str):
+    """Serve the uploaded image for a submission, by submission_id prefix.
+
+    Phoenix's UploadController proxies through this so the score view's
+    image preview keeps working across Phoenix redeploys (Phoenix's local
+    /tmp gets wiped, but the pipeline's /data volume persists).
+    """
+    if "/" in submission_id or "\\" in submission_id or ".." in submission_id:
+        raise HTTPException(status_code=400, detail="invalid submission_id")
+    upload_dir = Path(os.environ.get("APODORNOT_UPLOAD_DIR", "/tmp/apodornot_uploads"))
+    matches = sorted(upload_dir.glob(f"{submission_id}_*"))
+    if not matches:
+        raise HTTPException(status_code=404, detail="image not found for submission")
+    path = matches[0]
+    # Resolve to absolute then check it stays inside upload_dir
+    if Path(upload_dir).resolve() not in path.resolve().parents:
+        raise HTTPException(status_code=400, detail="invalid path")
+    return FileResponse(path)
 
 
 # ---------------------------------------------------------------------------- #
@@ -276,6 +297,7 @@ def scorecard_to_dict(sc: ScoreCard, *, evaluation=None) -> dict[str, Any]:
     payload = {
         "image_path": sc.image_path,
         "target_category": sc.target_category,
+        "target_explicit": sc.target_explicit,
         "reference_category": sc.reference_category,
         "reference_n": sc.reference_n,
         "input_domain": sc.input_domain,

@@ -374,6 +374,10 @@ class ScoreCard:
     warnings: list[str] = field(default_factory=list)
     input_domain: str = "unknown"          # "display" / "linear" / "unknown"
     reference_domain: str = "display"      # baseline is APOD JPEGs
+    # True when ``target_category`` came from the user-supplied target_type
+    # parameter; False when it was auto-derived from the filename. Surfaced
+    # in the UI so the user can confirm their pick was honored.
+    target_explicit: bool = False
 
     def text_report(self) -> str:
         lines = [f"apodornot scorecard — {self.image_path}"]
@@ -682,6 +686,7 @@ def score_evaluation(
     return ScoreCard(
         image_path=evaluation.image_path,
         target_category=target_category,
+        target_explicit=explicit,
         reference_category=reference_category,
         reference_n=reference_n,
         axis_scores=axis_scores,
