@@ -499,7 +499,7 @@ defmodule ApodornotWebWeb.ScoreLive do
       <div class="flex-1 min-h-[280px] bg-black rounded overflow-hidden flex items-center justify-center">
         <img
           :if={@image_filename && @image_filename != "image"}
-          src={~p"/uploads/#{@image_filename}"}
+          src={~p"/image/#{@submission_id}"}
           alt={display_filename(@image_filename)}
           class="max-w-full max-h-[480px] object-contain"
         />
@@ -536,6 +536,10 @@ defmodule ApodornotWebWeb.ScoreLive do
         </div>
       </div>
       <div class="font-mono text-xs text-slate-500 leading-relaxed">
+        target: {@scorecard["target_category"]}
+        <span :if={@scorecard["target_explicit"]} class="text-sky-400/80">· your pick</span>
+        <span :if={!@scorecard["target_explicit"]} class="text-slate-600">· auto from filename</span>
+        <br />
         vs APOD {@scorecard["reference_category"]} · n={@scorecard["reference_n"]}<br />
         {@scorecard["reference_domain"]} domain
       </div>
@@ -553,7 +557,7 @@ defmodule ApodornotWebWeb.ScoreLive do
     <button
       phx-click="select_axis"
       phx-value-axis={@axis["axis"]}
-      class="text-left border border-slate-800 bg-slate-900/30 hover:border-slate-700 hover:bg-slate-900/50 rounded p-4 flex flex-col gap-3 transition-colors"
+      class="text-left cursor-pointer border border-slate-800 bg-slate-900/30 hover:border-slate-700 hover:bg-slate-900/50 rounded p-4 flex flex-col gap-3 transition-colors"
     >
       <div class="flex justify-between items-baseline">
         <div class="text-slate-300 text-xs font-medium tracking-wide">

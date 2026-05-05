@@ -55,14 +55,18 @@ defmodule ApodornotWebWeb.UploadLive do
         upload_dir = Application.fetch_env!(:apodornot_web, :upload_dir)
         File.mkdir_p!(upload_dir)
 
+        # Match the pipeline's file naming so /image/:submission_id can
+        # find the local file on Phoenix without needing to lookup the
+        # random suffix.
+        submission_id = random_id()
+
         [{path, _client_name}] =
           consume_uploaded_entries(socket, :image, fn meta, entry ->
-            dest = Path.join(upload_dir, "#{random_id()}_#{entry.client_name}")
+            dest = Path.join(upload_dir, "#{submission_id}_#{entry.client_name}")
             File.cp!(meta.path, dest)
             {:ok, {dest, entry.client_name}}
           end)
 
-        submission_id = random_id()
         target = if socket.assigns.target_type == "auto", do: nil, else: socket.assigns.target_type
         upload_basename = Path.basename(path)
 
@@ -75,9 +79,13 @@ defmodule ApodornotWebWeb.UploadLive do
 
         PipelineRunner.start(submission_id, path, target)
 
-        {:noreply,
-         socket
-         |> push_navigate(to: ~p"/s/#{submission_id}")}
+        # Use redirect (full HTTP) instead of push_navigate so that
+        # Plugs.RecentSubmissions runs during the GET /s/:id and the
+        # session cookie picks up the new submission_id. push_navigate
+        # uses LiveView in-process navigation and the plug pipeline is
+        # skipped, leaving the dropdown unaware of new submissions until
+        # the user does a hard reload.
+        {:noreply, redirect(socket, to: ~p"/s/#{submission_id}")}
     end
   end
 

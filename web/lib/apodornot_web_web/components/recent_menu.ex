@@ -15,11 +15,15 @@ defmodule ApodornotWebWeb.RecentMenu do
 
   def recent_menu(assigns) do
     ~H"""
-    <details :if={@items != []} class="relative font-mono text-xs">
-      <summary class="cursor-pointer list-none text-slate-500 hover:text-slate-300 select-none">
+    <details class="relative font-mono text-xs">
+      <summary class={[
+        "cursor-pointer list-none select-none transition-colors",
+        @items == [] && "text-slate-700 cursor-default",
+        @items != [] && "text-slate-500 hover:text-slate-300"
+      ]}>
         recent ({length(@items)})
       </summary>
-      <div class="absolute left-0 mt-2 w-72 bg-slate-900 border border-slate-800 rounded shadow-xl py-1 max-h-96 overflow-y-auto">
+      <div :if={@items != []} class="absolute left-0 mt-2 w-72 bg-slate-900 border border-slate-800 rounded shadow-xl py-1 max-h-96 overflow-y-auto">
         <a
           :for={s <- @items}
           href={~p"/s/#{s["id"]}"}

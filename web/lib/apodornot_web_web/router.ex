@@ -30,6 +30,7 @@ defmodule ApodornotWebWeb.Router do
     live "/s/:submission_id/reference", ReferenceLive, :show
 
     get "/uploads/:filename", UploadController, :show
+    get "/image/:submission_id", UploadController, :image
   end
 
   # Other scopes may use custom stacks.
