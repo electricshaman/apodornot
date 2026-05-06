@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from collections.abc import Iterable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -215,6 +216,24 @@ def _quarantine_path(cache_dir: Path, image_path: Path) -> Path:
     return cache_dir / f"{image_path.stem}.quarantined.json"
 
 
+def _cache_fresher_than(
+    cache_dir: Path, image_path: Path, ref_monotonic: float
+) -> bool:
+    """True if the eval cache file exists AND was written after ``ref_monotonic``.
+
+    Used by the run loop to filter "already done THIS run" without confusing
+    --force rebuilds where all cache files exist from prior runs.
+    """
+    p = evaluation_cache_path(cache_dir, image_path)
+    if not p.exists():
+        return False
+    # Compare wall-clock mtime to the run's monotonic-relative threshold.
+    # We convert by anchoring to "now" — anything written before
+    # (now - elapsed_since_run_start) is older than the run.
+    elapsed = time.monotonic() - ref_monotonic
+    return (time.time() - p.stat().st_mtime) < elapsed
+
+
 def _write_quarantine(cache_dir: Path, entry, reason: str) -> None:
     import datetime as _dt
     p = _quarantine_path(Path(cache_dir), Path(entry.image_path))
@@ -389,6 +408,11 @@ def run_archive(
         _random.shuffle(remaining)
         batch_size = max(workers * 2, 8)
         consecutive_no_progress = 0
+        # Track which entries we've already processed in THIS run, so the
+        # cache-existence check below doesn't strip everything on a --force
+        # rebuild (where all cache files already exist from prior runs and
+        # the worker overwrites them).
+        run_started = time.monotonic()
         while remaining:
             batch = remaining[:batch_size]
             tail = remaining[batch_size:]
@@ -396,11 +420,12 @@ def run_archive(
                 batch, cache_dir, workers, progress, errors, by_category
             )
             processed += completed
-            # Unfinished batch members go back into the queue (after tail) so
-            # they get another shot in a different mix of co-runners.
+            # Unfinished batch members go back into the queue. Skip entries
+            # whose cache file was written/touched DURING THIS RUN (so a
+            # --force run doesn't trip on its own pre-existing cache).
             remaining = [
                 e for e in tail + inflight
-                if not evaluation_cache_path(cache_dir, e.image_path).exists()
+                if not _cache_fresher_than(cache_dir, e.image_path, run_started)
                 and not _quarantine_path(cache_dir, e.image_path).exists()
             ]
             if completed == 0 and not inflight:
