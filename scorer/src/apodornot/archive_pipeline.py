@@ -361,9 +361,13 @@ def run_archive(
             skipped += 1
             by_category[e.category] = by_category.get(e.category, 0) + 1
             continue
-        # Skip already-quarantined images so a known-bad input doesn't
-        # crash a worker again on the next run.
-        if not force and _quarantine_path(cache_dir, e.image_path).exists():
+        # Skip already-quarantined images even with --force. They've crashed
+        # a worker before (SIGTRAP / EXC_BREAKPOINT in C extension), and
+        # crashing them again just spams the user with "Python quit
+        # unexpectedly" dialogs and chews through the no-progress budget
+        # without learning anything new. To re-test a quarantined image
+        # after fixing the underlying bug, delete its quarantine marker.
+        if _quarantine_path(cache_dir, e.image_path).exists():
             errors.append((str(e.image_path), "quarantined (previous worker crash)"))
             continue
         todo.append(e)
@@ -402,11 +406,13 @@ def run_archive(
             if completed == 0 and not inflight:
                 # A whole batch came back with nothing accomplished AND no
                 # in-flight set (i.e. all futures resolved with errors but
-                # the pool didn't die mid-batch). That means we've hit a
-                # batch full of permanently-failing images; bail before we
-                # spin forever.
+                # the pool didn't die mid-batch). Could mean we've hit a
+                # cluster of permanently-failing images; bail eventually,
+                # but not too eagerly — with 12-image batches and a few
+                # dozen bad images in a 10K-image archive, three in a row
+                # is plausible by chance. 10 in a row is not.
                 consecutive_no_progress += 1
-                if consecutive_no_progress >= 3:
+                if consecutive_no_progress >= 10:
                     break
             else:
                 consecutive_no_progress = 0
