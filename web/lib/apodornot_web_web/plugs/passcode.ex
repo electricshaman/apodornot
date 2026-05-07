@@ -25,7 +25,7 @@ defmodule ApodornotWebWeb.Plugs.Passcode do
   import Phoenix.Controller, only: [redirect: 2]
 
   @session_key :authenticated
-  @public_paths ["healthz", "login"]
+  @public_paths ["healthz", "login", "changelog"]
 
   def init(opts), do: opts
 

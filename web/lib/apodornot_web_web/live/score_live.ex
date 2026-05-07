@@ -371,6 +371,9 @@ defmodule ApodornotWebWeb.ScoreLive do
         <div :if={@scorecard && @scorecard["reference_category"]} class="font-mono text-[10px] tracking-wider text-slate-600">
           vs {String.upcase(@scorecard["reference_category"])} · n={@scorecard["reference_n"]}
         </div>
+        <a href={~p"/changelog"} class="font-mono text-[10px] uppercase tracking-widest text-slate-600 hover:text-slate-300">
+          what's new
+        </a>
         <.logout_form :if={ApodornotWebWeb.Plugs.Passcode.enabled?()} />
       </div>
     </div>

@@ -98,6 +98,13 @@ defmodule ApodornotWebWeb.UploadLive do
     <div class="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-8 font-sans">
       <div class="fixed top-0 left-0 right-0 px-6 py-3 flex items-center justify-between gap-4 z-10">
         <RecentMenu.recent_menu items={@recent_submissions} />
+        <div class="flex items-center gap-4">
+          <a
+            href={~p"/changelog"}
+            class="font-mono text-[10px] uppercase tracking-widest text-slate-600 hover:text-slate-300"
+          >
+            what's new
+          </a>
         <form :if={ApodornotWebWeb.Plugs.Passcode.enabled?()} method="post" action="/logout" class="m-0">
           <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
           <button
@@ -107,6 +114,7 @@ defmodule ApodornotWebWeb.UploadLive do
             sign out
           </button>
         </form>
+        </div>
       </div>
       <div class="max-w-2xl w-full">
         <div class="font-mono text-xs uppercase tracking-widest text-slate-500 mb-4">

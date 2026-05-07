@@ -19,12 +19,13 @@ defmodule ApodornotWebWeb.Router do
   scope "/", ApodornotWebWeb do
     pipe_through :browser
 
-    # Passcode plug allowlists "/healthz" and "/login" by path.
+    # Passcode plug allowlists "/healthz", "/login", "/changelog" by path.
     get "/healthz", HealthController, :show
     get "/login", AuthController, :new
     post "/login", AuthController, :create
     post "/logout", AuthController, :delete
 
+    live "/changelog", ChangelogLive, :index
     live "/", UploadLive, :index
     live "/s/:submission_id", ScoreLive, :show
     live "/s/:submission_id/reference", ReferenceLive, :show
