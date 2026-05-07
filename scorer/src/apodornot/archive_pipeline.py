@@ -484,7 +484,14 @@ SCORING_METRICS: tuple[tuple[str, str, bool], ...] = (
     ("fpn_max_pattern",           "noise.fpn_max_pattern",                  False),
     # Target freq
     ("target_spectral_slope",     "target_freq.spectral_slope",            True),
-    ("target_effective_resolution","target_freq.effective_resolution_cycles_per_px", True),
+    # ``target_effective_resolution`` was dropped from scoring on 2026-05-06.
+    # Both the threshold-based and curvature-based detectors produced a
+    # uniformly-clustered distribution (within-spread ~0.34, cross-category
+    # variance ~0.018) — every image landed at ~p50, contributing a
+    # constant ~50 rank_score offset without discriminating. The
+    # ``effective_resolution_cycles_per_px`` value is still computed in
+    # A4 so the radial PSD chart can show a marker for visual orientation,
+    # but it no longer participates in scoring.
     # Calibration
     ("gradient_ratio",            "calibration.gradient_ratio",            False),
     ("vignetting_falloff",        "calibration.vignetting_falloff",        False),

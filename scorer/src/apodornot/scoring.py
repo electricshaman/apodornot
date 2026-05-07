@@ -59,7 +59,9 @@ COMPOSITE_AXES: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = (
         "Detail resolution",
         (
             ("target_spectral_slope", 1.0),
-            ("target_effective_resolution", 1.0),
+            # target_effective_resolution removed: clustered ~0.26 archive-wide
+            # with no discriminating power. See archive_pipeline.SCORING_METRICS
+            # for the full reasoning.
             ("psd_spectral_slope", 0.5),
         ),
     ),
