@@ -151,4 +151,93 @@ defmodule ApodornotWebWeb.Layouts do
     </div>
     """
   end
+
+  # --------------------------------------------------------------------------
+  # apodornot top-bar chrome — used on every authenticated page
+  # --------------------------------------------------------------------------
+
+  alias ApodornotWebWeb.RecentMenu
+
+  @doc """
+  Fixed top-bar with the recent-submissions dropdown on the left and the
+  ``what's new`` + ``sign out`` nav cluster on the right.
+
+  Variants:
+
+    - ``recent_submissions`` — list rendered as the dropdown.
+    - ``current_id``         — highlights the active submission.
+    - ``left_offset``        — px to push the bar's left edge by (used by
+      ScoreLive when the chat sidebar is open or collapsed).
+    - ``:left`` / ``:right`` slots — extra content sandwiched between the
+      built-in left and right clusters. Use ``:right`` to add page-specific
+      status text (e.g. ``vs APOD rosette · n=41``); use ``:left`` to drop in
+      a brand link on pages where the body doesn't already say "apodornot".
+
+  The sign-out form is hidden when ``Plugs.Passcode.enabled?/0`` is false
+  so dev-mode (no passcode) doesn't tease a feature that doesn't apply.
+  """
+  attr :recent_submissions, :list, default: []
+  attr :current_id, :string, default: nil
+  attr :left_offset, :string, default: nil
+  attr :authenticated, :boolean,
+    default: true,
+    doc: "false on public pages — hides signout + recent dropdown"
+
+  slot :left
+  slot :right
+
+  def app_chrome(assigns) do
+    ~H"""
+    <div
+      class="fixed top-0 right-0 px-6 py-3 flex items-center justify-between gap-4 z-10 pointer-events-none transition-all"
+      style={"left: #{@left_offset || "0"}"}
+    >
+      <div class="flex items-center gap-4 pointer-events-auto">
+        {render_slot(@left)}
+        <RecentMenu.recent_menu
+          :if={@authenticated}
+          items={@recent_submissions}
+          current_id={@current_id}
+        />
+      </div>
+      <div class="flex items-center gap-4 pointer-events-auto">
+        {render_slot(@right)}
+        <a
+          href={~p"/changelog"}
+          class="font-mono text-[10px] uppercase tracking-widest text-slate-600 hover:text-slate-300"
+        >
+          what's new
+        </a>
+        <.signout_form :if={@authenticated and ApodornotWebWeb.Plugs.Passcode.enabled?()} />
+      </div>
+    </div>
+    """
+  end
+
+  @doc "POST /logout button styled to match the rest of the chrome nav."
+  def signout_form(assigns) do
+    ~H"""
+    <form method="post" action="/logout" class="m-0">
+      <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+      <button
+        type="submit"
+        class="font-mono text-[10px] uppercase tracking-widest text-slate-600 hover:text-slate-300 bg-transparent border-0 p-0 cursor-pointer"
+      >
+        sign out
+      </button>
+    </form>
+    """
+  end
+
+  @doc "``apodornot`` brand link, monospace, slate-500."
+  def brand_link(assigns) do
+    ~H"""
+    <a
+      href={~p"/"}
+      class="font-mono text-xs uppercase tracking-widest text-slate-500 hover:text-slate-300"
+    >
+      apodornot
+    </a>
+    """
+  end
 end

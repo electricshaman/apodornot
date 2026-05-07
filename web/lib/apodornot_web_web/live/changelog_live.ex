@@ -7,25 +7,45 @@ defmodule ApodornotWebWeb.ChangelogLive do
   """
   use ApodornotWebWeb, :live_view
 
-  alias ApodornotWeb.Changelog
+  alias ApodornotWeb.{Changelog, SubmissionStore}
+  alias ApodornotWebWeb.Layouts
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
+    # Public route — but if the visitor is signed in, render the full
+    # authenticated chrome (signout + recent submissions dropdown) so the
+    # page doesn't feel like they were dropped on a different site.
+    authenticated = Map.get(session, "authenticated") == true
+
+    recent =
+      if authenticated do
+        session
+        |> Map.get("recent_submission_ids", [])
+        |> SubmissionStore.fetch_many()
+      else
+        []
+      end
+
     {:ok,
      socket
      |> assign(:page_title, "What's new")
-     |> assign(:releases, Changelog.releases())}
+     |> assign(:releases, Changelog.releases())
+     |> assign(:authenticated, authenticated)
+     |> assign(:recent_submissions, recent)}
   end
 
   @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-slate-950 text-slate-100 font-sans">
-      <div class="fixed top-0 left-0 right-0 px-6 py-3 flex items-center justify-between z-10 pointer-events-none">
-        <a href={~p"/"} class="font-mono text-xs uppercase tracking-widest text-slate-500 hover:text-slate-300 pointer-events-auto">
-          apodornot
-        </a>
-      </div>
+      <Layouts.app_chrome
+        authenticated={@authenticated}
+        recent_submissions={@recent_submissions}
+      >
+        <:left>
+          <Layouts.brand_link />
+        </:left>
+      </Layouts.app_chrome>
 
       <div class="max-w-3xl mx-auto px-8 pt-24 pb-20">
         <h1 class="text-3xl font-medium mb-2">What's new</h1>

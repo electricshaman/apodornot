@@ -2,7 +2,7 @@ defmodule ApodornotWebWeb.ScoreLive do
   use ApodornotWebWeb, :live_view
 
   alias ApodornotWeb.{ChatBudget, ChatRunner, PipelineRunner, SubmissionStore}
-  alias ApodornotWebWeb.{AxisDiagnostics, Glossary, RecentMenu}
+  alias ApodornotWebWeb.{AxisDiagnostics, Glossary, Layouts}
   alias Phoenix.PubSub
 
   @pubsub ApodornotWeb.PubSub
@@ -357,40 +357,20 @@ defmodule ApodornotWebWeb.ScoreLive do
       |> assign_new(:current_id, fn -> nil end)
 
     ~H"""
-    <div
-      class="fixed top-0 right-0 px-6 py-3 flex justify-between items-center z-10 pointer-events-none transition-all"
-      style={"left: #{if @chat_open, do: "420px", else: "48px"}"}
+    <Layouts.app_chrome
+      recent_submissions={@recent_submissions}
+      current_id={@current_id}
+      left_offset={if @chat_open, do: "420px", else: "48px"}
     >
-      <div class="flex items-center gap-4 pointer-events-auto">
-        <a href={~p"/"} class="font-mono text-xs uppercase tracking-widest text-slate-500 hover:text-slate-300">
-          apodornot
-        </a>
-        <RecentMenu.recent_menu items={@recent_submissions} current_id={@current_id} />
-      </div>
-      <div class="flex items-center gap-4 pointer-events-auto">
+      <:left>
+        <Layouts.brand_link />
+      </:left>
+      <:right>
         <div :if={@scorecard && @scorecard["reference_category"]} class="font-mono text-[10px] tracking-wider text-slate-600">
           vs {String.upcase(@scorecard["reference_category"])} · n={@scorecard["reference_n"]}
         </div>
-        <a href={~p"/changelog"} class="font-mono text-[10px] uppercase tracking-widest text-slate-600 hover:text-slate-300">
-          what's new
-        </a>
-        <.logout_form :if={ApodornotWebWeb.Plugs.Passcode.enabled?()} />
-      </div>
-    </div>
-    """
-  end
-
-  defp logout_form(assigns) do
-    ~H"""
-    <form method="post" action="/logout" class="m-0">
-      <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
-      <button
-        type="submit"
-        class="font-mono text-[10px] uppercase tracking-widest text-slate-600 hover:text-slate-300 bg-transparent border-0 p-0 cursor-pointer"
-      >
-        sign out
-      </button>
-    </form>
+      </:right>
+    </Layouts.app_chrome>
     """
   end
 
