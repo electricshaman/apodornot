@@ -72,8 +72,21 @@ class CalibrationAssessment:
 
 
 def _polyfit_surface(z: np.ndarray, order: int = 2) -> tuple[np.ndarray, np.ndarray]:
-    """Fit a polynomial surface of given order. Returns (coeffs, fitted)."""
+    """Fit a polynomial surface of given order. Returns (coeffs, fitted).
+
+    For large inputs we stride-downsample first. A 24 MP background map
+    otherwise allocates ~1.2 GB just for the (H·W, 6) design matrix at order=2,
+    plus another ~GB of lstsq SVD workspace — enough to OOM a 4 GB pipeline
+    machine. The fit is determined by 6 coefficients; a 128-px-per-side grid
+    (≥16K samples) is comfortably overdetermined and produces a surface
+    numerically indistinguishable from the full-resolution one on the smooth
+    SEP background.
+    """
     h, w = z.shape
+    step = max(1, min(h, w) // 128)
+    if step > 1:
+        z = z[::step, ::step]
+        h, w = z.shape
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
     xn = (xx - (w - 1) / 2.0) / max(w / 2.0, 1.0)
     yn = (yy - (h - 1) / 2.0) / max(h / 2.0, 1.0)
