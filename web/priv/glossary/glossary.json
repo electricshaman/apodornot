@@ -27,19 +27,22 @@
     "label": "Color calibration",
     "beginner": "Are the colors realistic and varied, or has processing crushed them all to gray?",
     "intermediate": "Star-color diversity (matching real stellar B–V variation), background neutrality (no color cast), and per-channel balance.",
-    "advanced": "Star RGB ratio diversity vs B–V reference, background chromaticity distance from neutral, per-channel balance, plus narrowband palette detection (SHO/HOO/natural)."
+    "advanced": "Star RGB ratio diversity vs B–V reference, background chromaticity distance from neutral, per-channel balance, plus narrowband palette detection (SHO/HOO/natural).",
+    "aliases": ["color_overall_score"]
   },
   "fwhm": {
     "label": "FWHM (full width at half maximum)",
     "beginner": "How fat your stars look, in pixels. FWHM 3 means each star spreads its brightness over about 3 pixels — sharp. FWHM 6 means soft, mushy stars. Driven by atmospheric seeing, scope focus, guiding accuracy, and how heavily you sharpened in processing.",
     "intermediate": "Full width at half maximum of a star's brightness profile in pixels. Sets the floor on resolvable detail — you cannot show structure finer than your FWHM. A combination of seeing, telescope diffraction, focus precision, and guide RMS. Sharpening can reduce apparent FWHM at the cost of ringing artifacts.",
-    "advanced": "Full-width-at-half-maximum of the per-star fitted Moffat profile. Geometric mean of FWHM_a (major axis) and FWHM_b (minor axis). Drives the optical-system point spread function characterization."
+    "advanced": "Full-width-at-half-maximum of the per-star fitted Moffat profile. Geometric mean of FWHM_a (major axis) and FWHM_b (minor axis). Drives the optical-system point spread function characterization.",
+    "aliases": ["median_fwhm_px"]
   },
   "eccentricity": {
     "label": "Eccentricity",
     "beginner": "Whether your stars are perfectly round or stretched. 0 means circle, near 1 means a thin streak. Healthy stars stay close to 0 across the whole frame. If they're stretched, the pattern tells you why: all stretched the same direction means tracking error; stretched outward from the center means optical aberration.",
     "intermediate": "Per-star ratio of the minor axis to the major axis, expressed as sqrt(1 − (b/a)²). Patterns across the frame diagnose tracking vs. optics.",
-    "advanced": "From the Moffat fit's (a, b) parameters: ecc = sqrt(1 − (b/a)²). Field-wide patterns analyzed via double-angle weighted mean resultant length R + radial alignment score against the field center."
+    "advanced": "From the Moffat fit's (a, b) parameters: ecc = sqrt(1 − (b/a)²). Field-wide patterns analyzed via double-angle weighted mean resultant length R + radial alignment score against the field center.",
+    "aliases": ["median_eccentricity"]
   },
   "psd": {
     "label": "Power spectral density (PSD)",
@@ -51,13 +54,15 @@
     "label": "MTF50 / effective resolution",
     "beginner": "The smallest pattern your image can still show clearly. MTF50 of 5 pixels means anything finer than ~5 pixels is mush. Smaller is sharper. Driven by your scope's optics, the seeing on the night, your tracking, and how heavily you smoothed in processing.",
     "intermediate": "The spatial frequency at which the image's modulation transfer function drops to half its peak. A standard sharpness benchmark.",
-    "advanced": "Modulation Transfer Function at 50% — the frequency where image contrast is halved from DC. Computed from the radial PSD's knee, comparable across systems."
+    "advanced": "Modulation Transfer Function at 50% — the frequency where image contrast is halved from DC. Computed from the radial PSD's knee, comparable across systems.",
+    "aliases": ["target_effective_resolution"]
   },
   "snr": {
     "label": "SNR (signal-to-noise ratio)",
     "beginner": "Whether the faint parts of your image look smooth or grainy. Zoom in on a dim part of the nebula — creamy texture means high SNR, fine static or sandiness means low SNR. The reliable fix is more total integration time; quadrupling time roughly doubles smoothness. Darker skies and a cooler sensor also help.",
     "intermediate": "How much your real detail stands out above the random pixel-to-pixel jitter. If a faint nebula sits 50 ADU above sky and pixels wobble by ±10 ADU, SNR is 5 — the structure is 5× stronger than typical noise wiggles. Below SNR ~3 detail becomes indistinguishable from noise and stretching just amplifies grain. SNR scales as the square root of integration time, so 1h → 4h doubles it.",
-    "advanced": "Per-pixel signal (background-subtracted luminance) divided by local noise (from the SEP RMS map). Reported as median + p90 over segmentation target pixels. Numerator is set by aperture × QE × target surface brightness × integration time; denominator combines shot noise (∝ √(sky + target)), read noise per sub, and dark current. From a dark site shot noise dominates, so total integration is the leading lever for amateur setups."
+    "advanced": "Per-pixel signal (background-subtracted luminance) divided by local noise (from the SEP RMS map). Reported as median + p90 over segmentation target pixels. Numerator is set by aperture × QE × target surface brightness × integration time; denominator combines shot noise (∝ √(sky + target)), read noise per sub, and dark current. From a dark site shot noise dominates, so total integration is the leading lever for amateur setups.",
+    "aliases": ["snr_target_median"]
   },
   "adu": {
     "label": "ADU (analog-digital units)",
@@ -75,19 +80,22 @@
     "label": "Noise autocorrelation",
     "beginner": "Measures how 'lumpy' the noise is. Tight grain = good. Smeared blobs = something smoothed your image too much.",
     "intermediate": "How correlated each noise pixel is with its neighbors. True shot noise is uncorrelated (1-pixel wide); drizzle, resampling, or NR widens the correlation peak.",
-    "advanced": "FFT-based autocorrelation of background patches. Half-max half-width measured in pixels. A width >> 1 px is a direct signature of pixel-level smearing from drizzle, bicubic resampling, or wavelet NR."
+    "advanced": "FFT-based autocorrelation of background patches. Half-max half-width measured in pixels. A width >> 1 px is a direct signature of pixel-level smearing from drizzle, bicubic resampling, or wavelet NR.",
+    "aliases": ["autocorr_width_px"]
   },
   "gradient_ratio": {
     "label": "Gradient ratio",
     "beginner": "How uneven the dark sky background is across your frame, measured in units of noise. The perfect image has flat sky. A gradient ratio of 3 means the sky tilts by 3× the noise level (visible on inspection); 10 is severe (one corner is clearly brighter than the other). Causes: light pollution, moon glow, flats that don't match the current optical setup.",
     "intermediate": "Peak-to-peak of a low-order polynomial fit to the background, normalized by the noise floor. Flags light-pollution gradients and bad flats.",
-    "advanced": "Peak-to-peak of a 2nd-order polynomial surface fitted to the SEP background map, divided by the median local RMS. The normalization makes it scale-invariant; rule of thumb 3× ≈ visible, 10× ≈ serious."
+    "advanced": "Peak-to-peak of a 2nd-order polynomial surface fitted to the SEP background map, divided by the median local RMS. The normalization makes it scale-invariant; rule of thumb 3× ≈ visible, 10× ≈ serious.",
+    "aliases": ["gradient_ratio"]
   },
   "vignetting": {
     "label": "Vignetting",
     "beginner": "When the corners of your image look dimmer than the center due to the optical path. A properly applied flat frame should remove it. If your scorecard shows residual vignetting, it usually means your flats don't match the current setup — different filter, refocus, or rotation since the flats were taken.",
     "intermediate": "Radial brightness falloff from the optical axis to the corners, measured on the SEP background map after the main target is masked off. Real residual vignetting after calibration points to flats that don't match the active optical configuration — common after changing filters, refocusing, or rotating the camera.",
-    "advanced": "Radial-falloff model fitted to background-mask pixels using shell-p10 robust binning (so a bright central target isn't misread as 'center brightness'). Reports center-to-corner percentage."
+    "advanced": "Radial-falloff model fitted to background-mask pixels using shell-p10 robust binning (so a bright central target isn't misread as 'center brightness'). Reports center-to-corner percentage.",
+    "aliases": ["vignetting_falloff"]
   },
   "psf": {
     "label": "PSF (point spread function)",
@@ -183,43 +191,50 @@
     "label": "Fixed-pattern noise",
     "beginner": "Stripes, bars, or fixed glow patterns that show up in the dark sky regardless of the actual scene — usually means your dark or bias calibration frames don't match the lights.",
     "intermediate": "Anisotropic noise aligned with rows or columns of the sensor — amp glow, vertical bars, horizontal stripes. The radial PSD and 2D autocorrelation can't see it because the energy is along a single axis. Detected by collapsing background patches to row-mean and column-mean, then PSD on those 1D signals.",
-    "advanced": "Score = fraction of total PSD energy in the lowest 25% of frequencies of column-mean and row-mean signals over background-mask patches (max of the two). White noise → ~0.25; strong fixed pattern → ~0.6+. Catches amp glow, dark-current striping, residual flat-field structure that other noise metrics miss."
+    "advanced": "Score = fraction of total PSD energy in the lowest 25% of frequencies of column-mean and row-mean signals over background-mask patches (max of the two). White noise → ~0.25; strong fixed pattern → ~0.6+. Catches amp glow, dark-current striping, residual flat-field structure that other noise metrics miss.",
+    "aliases": ["fpn_max_pattern"]
   },
   "fwhm_quadrant_asymmetry": {
     "label": "FWHM quadrant asymmetry",
     "beginner": "Whether one corner of your image is sharper than the opposite corner. If the upper-left is sharp but the lower-right is fat, your camera is probably tilted.",
     "intermediate": "Difference between the worst and best quadrant's median star size, normalized by the field median. Symmetric softness across all four corners is field curvature; one diagonal worse than the other is sensor tilt.",
-    "advanced": "(max(quadrant median FWHM) − min(quadrant median FWHM)) / median FWHM, computed by partitioning the fitted-star catalog into top-left/top-right/bottom-left/bottom-right at the image center. Distinguishes uniform field curvature (low asymmetry, high corner-excess) from tilt (high asymmetry, paired diagonal corners worst)."
+    "advanced": "(max(quadrant median FWHM) − min(quadrant median FWHM)) / median FWHM, computed by partitioning the fitted-star catalog into top-left/top-right/bottom-left/bottom-right at the image center. Distinguishes uniform field curvature (low asymmetry, high corner-excess) from tilt (high asymmetry, paired diagonal corners worst).",
+    "aliases": ["fwhm_quadrant_asymmetry"]
   },
   "corner_fwhm_excess": {
     "label": "Corner FWHM excess",
     "beginner": "How much fatter your stars look at the corners of the frame compared to the center. Big number = the lens isn't sharp at the edges.",
     "intermediate": "The ratio of corner-region star sharpness (median FWHM in the outer 25% of the field) to center-region sharpness (inner 50%). Large positive values indicate field curvature, sensor tilt, or coma.",
-    "advanced": "(median FWHM in corner annulus, r > 0.7·half-diagonal) / (median FWHM in center disk, r < 0.4·half-diagonal) − 1. Half-diagonal-based binning so it's robust across aspect ratios. Combined with the eccentricity pattern it discriminates field curvature (FWHM rises radially) from coma (eccentricity radial AND FWHM rises) from tilt (asymmetric corner-to-corner)."
+    "advanced": "(median FWHM in corner annulus, r > 0.7·half-diagonal) / (median FWHM in center disk, r < 0.4·half-diagonal) − 1. Half-diagonal-based binning so it's robust across aspect ratios. Combined with the eccentricity pattern it discriminates field curvature (FWHM rises radially) from coma (eccentricity radial AND FWHM rises) from tilt (asymmetric corner-to-corner).",
+    "aliases": ["fwhm_corner_excess"]
   },
   "hf_suppression": {
     "label": "High-frequency PSD suppression",
     "beginner": "If your noise reduction was too heavy, the fine grain in the dark sky gets smoothed away. This number measures how much.",
     "intermediate": "How much the high-frequency (small-scale) part of your background noise has been suppressed compared to its mid-frequency baseline. Big values = aggressive NR; the sky looks smooth and 'plastic' instead of having natural grain.",
-    "advanced": "1 − (mean PSD power in upper band) / (mean PSD power in mid band), measured on background-only patches. >0.5 indicates aggressive low-pass NR (NoiseXTerminator on a high setting, heavy MMT/TGV). The signature is independent of overall noise level — it's the SHAPE that's diagnostic."
+    "advanced": "1 − (mean PSD power in upper band) / (mean PSD power in mid band), measured on background-only patches. >0.5 indicates aggressive low-pass NR (NoiseXTerminator on a high setting, heavy MMT/TGV). The signature is independent of overall noise level — it's the SHAPE that's diagnostic.",
+    "aliases": ["psd_high_band_suppression"]
   },
   "noise_psd_slope": {
     "label": "Noise PSD spectral slope",
     "beginner": "Tells you what the dark sky's noise 'shape' looks like. Real shot noise looks one way; over-processed noise looks another.",
     "intermediate": "The log-log slope of the background noise's power spectrum. A flat slope (~0) means well-behaved white noise; steep negative slopes mean low-frequency lumpy noise from over-smoothing or calibration issues.",
-    "advanced": "Linear-regression slope of log(PSD) vs log(frequency) for background patches. Pure shot noise is white (slope ≈ 0). Slope < −1 indicates low-frequency dominance (NR smoothing, residual gradient). Slope > 0 indicates a high-frequency boost (oversharpening, ringing)."
+    "advanced": "Linear-regression slope of log(PSD) vs log(frequency) for background patches. Pure shot noise is white (slope ≈ 0). Slope < −1 indicates low-frequency dominance (NR smoothing, residual gradient). Slope > 0 indicates a high-frequency boost (oversharpening, ringing).",
+    "aliases": ["psd_spectral_slope"]
   },
   "detail_slope": {
     "label": "Target detail spectral slope",
     "beginner": "Real astronomical detail follows a predictable pattern. This number checks whether yours does — sharpening artifacts make it look unnatural.",
     "intermediate": "The log-log slope of the target region's radial power spectrum. Real diffuse astronomical structure has a smooth power-law falloff; sharpening kernels add bumps that make the slope shallower (less negative) than expected.",
-    "advanced": "Power-law slope fit to the windowed-FFT radial power spectrum of the target region, over [0.01, 0.25] cy/px. Astronomical sources typically yield slopes in [−3, −2]. Flatter than −2 with a corresponding bump in the residual is a sharpening signature; steeper than −3 suggests over-smoothed detail."
+    "advanced": "Power-law slope fit to the windowed-FFT radial power spectrum of the target region, over [0.01, 0.25] cy/px. Astronomical sources typically yield slopes in [−3, −2]. Flatter than −2 with a corresponding bump in the residual is a sharpening signature; steeper than −3 suggests over-smoothed detail.",
+    "aliases": ["target_spectral_slope"]
   },
   "background_sigma": {
     "label": "Background σ (sigma)",
     "beginner": "How noisy the dark sky parts of your image are. Lower = cleaner.",
     "intermediate": "The standard deviation of pixel intensities in background-only regions. The fundamental noise floor of the image.",
-    "advanced": "Sigma-clipped standard deviation of background-mask pixels per channel. The denominator in SNR; set by integration time, sensor read noise, dark current, and sky brightness."
+    "advanced": "Sigma-clipped standard deviation of background-mask pixels per channel. The denominator in SNR; set by integration time, sensor read noise, dark current, and sky brightness.",
+    "aliases": ["noise_floor_l"]
   },
   "integration_time": {
     "label": "Integration time",
@@ -236,24 +251,28 @@
     "label": "Stellar chroma diversity",
     "beginner": "How much color variety your stars have — blue, white, yellow, orange — vs all looking the same.",
     "intermediate": "The spread of star colors across the detected population. Healthy images show the full stellar color sequence; over-processed ones collapse everyone to gray.",
-    "advanced": "Mean inter-quartile range of normalized R/G/B ratios across detected stars. Mapped to a 0–1 score; low values flag color information destroyed by saturation, NR-on-chroma, or aggressive white balance."
+    "advanced": "Mean inter-quartile range of normalized R/G/B ratios across detected stars. Mapped to a 0–1 score; low values flag color information destroyed by saturation, NR-on-chroma, or aggressive white balance.",
+    "aliases": ["star_diversity_score"]
   },
   "chroma_concentration": {
     "label": "Chroma concentration",
     "beginner": "Whether your colors all bunch up into one hue (e.g. everything magenta) or spread across the full color range. Low = healthy spread; high = palette collapse.",
     "intermediate": "Fraction of target pixels whose chromaticity falls in a single hue bin. Catches narrowband palette imbalance — e.g. SII+Ha running together as 'magenta everywhere' instead of separating from OIII.",
-    "advanced": "12-bin hue histogram on (r, g) chromaticity coordinates of target pixels (after dropping near-neutral pixels via chroma_distance threshold). Returns max(bin) / sum(bins). White-balanced broadband nebulae spread across 4-6 bins (concentration ≈ 0.2-0.3); palette-collapsed narrowband images peak at 0.6+. Independent of overall background chromaticity (which `background_chroma_distance` covers)."
+    "advanced": "12-bin hue histogram on (r, g) chromaticity coordinates of target pixels (after dropping near-neutral pixels via chroma_distance threshold). Returns max(bin) / sum(bins). White-balanced broadband nebulae spread across 4-6 bins (concentration ≈ 0.2-0.3); palette-collapsed narrowband images peak at 0.6+. Independent of overall background chromaticity (which `background_chroma_distance` covers).",
+    "aliases": ["chroma_concentration"]
   },
   "background_chroma": {
     "label": "Background chroma distance",
     "beginner": "How far your sky background is from a true neutral gray.",
     "intermediate": "The chromaticity distance of the median background from neutral (1/3, 1/3) in (r, g) space. Catches color casts left over from incomplete calibration.",
-    "advanced": "Euclidean distance of the median background chromaticity from (1/3, 1/3). Independent of overall brightness; flags color casts from filters, sensors, or skipped background-neutralization steps."
+    "advanced": "Euclidean distance of the median background chromaticity from (1/3, 1/3). Independent of overall brightness; flags color casts from filters, sensors, or skipped background-neutralization steps.",
+    "aliases": ["background_chroma_distance"]
   },
   "channel_balance": {
     "label": "Channel balance",
     "beginner": "Whether your red, green, and blue channels are balanced or one dominates.",
     "intermediate": "How far the per-channel background means deviate from each other after normalization. Big deviations indicate color calibration is off.",
-    "advanced": "Magnitude of the (R, G, B) deviation vector from the per-channel mean, normalized by the average background level. Catches color casts and unbalanced flats."
+    "advanced": "Magnitude of the (R, G, B) deviation vector from the per-channel mean, normalized by the average background level. Catches color casts and unbalanced flats.",
+    "aliases": ["color_balance_magnitude"]
   }
 }

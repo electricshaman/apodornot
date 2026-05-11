@@ -35,4 +35,37 @@ defmodule ApodornotWebWeb.GlossaryTest do
       assert is_binary(entry["advanced"]), "missing advanced for #{key}"
     end
   end
+
+  describe "linkify_html" do
+    test "wraps a known phrase in a button" do
+      html = Glossary.linkify_html("<p>The FWHM was 3.2 px.</p>")
+      assert html =~ ~s|phx-value-term="fwhm"|
+      assert html =~ ~s|>FWHM<|
+    end
+
+    test "walks into <code> so backticked metric ids in chat are clickable" do
+      html = Glossary.linkify_html("<p>Your <code>fwhm_corner_excess</code> is high.</p>")
+      assert html =~ ~s|phx-value-term="corner_fwhm_excess"|
+      assert html =~ ~s|>fwhm_corner_excess<|
+    end
+
+    test "still skips <pre> blocks" do
+      original = "<pre><code>vignetting_falloff = 0.42</code></pre>"
+      assert Glossary.linkify_html(original) == original
+    end
+
+    test "links snake_case metric aliases" do
+      for {alias_str, term_id} <- [
+            {"vignetting_falloff", "vignetting"},
+            {"psd_high_band_suppression", "hf_suppression"},
+            {"snr_target_median", "snr"},
+            {"noise_floor_l", "background_sigma"},
+            {"color_balance_magnitude", "channel_balance"}
+          ] do
+        html = Glossary.linkify_html("<p><code>#{alias_str}</code></p>")
+        assert html =~ ~s|phx-value-term="#{term_id}"|,
+               "expected `#{alias_str}` to link to term `#{term_id}`, got: #{html}"
+      end
+    end
+  end
 end

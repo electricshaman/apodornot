@@ -100,11 +100,13 @@ defmodule ApodornotWebWeb.Glossary do
   # linkify_html — auto-link glossary terms in chat HTML output.
   # --------------------------------------------------------------------------
 
-  # Tags whose contents we never want to walk: re-linking inside <code>
-  # would break inline jargon used in literal sense, <a> would create
-  # nested clickables, <pre> would mangle preformatted blocks, and any
-  # element we already wrapped should be left alone.
-  @protected_tags ~w(a code pre button)
+  # Tags whose contents we never want to walk: <a> would create nested
+  # clickables, <pre> would mangle preformatted code blocks, and any
+  # element we already wrapped should be left alone. We DO walk into
+  # <code> because the chat assistant emits raw metric ids in inline
+  # backticks (`fwhm_corner_excess`) and the user expects those to be
+  # clickable — see the glossary aliases for the snake_case metric ids.
+  @protected_tags ~w(a pre button)
 
   @doc """
   Walk an HTML string and wrap any glossary term in a clickable button.
