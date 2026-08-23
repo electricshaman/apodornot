@@ -101,9 +101,21 @@ apodornot score apod_archive/2024/2024-01-15.jpg --target-type emission_nebula
 apodornot-mcp                    # stdio MCP server
 ```
 
-Requires Python 3.11–3.13. A NASA API key is optional — `DEMO_KEY` works at 30
-requests/hour; set `NASA_API_KEY` for more. Image downloads come from
-`apod.nasa.gov` directly and do not count against the limit.
+Requires Python 3.11–3.13.
+
+### Credentials
+
+Copy [`.env.example`](.env.example) to `.env` and fill in what you need.
+**Measurement needs no credentials at all** — stages A0–A8 and the scorecard are
+pure signal processing.
+
+| Variable | Needed for |
+|---|---|
+| `ANTHROPIC_API_KEY` | The two model-backed features: extracting structured acquisition metadata from the free-text context box, and the chat about a finished scorecard. Both fail without it; scoring is unaffected. |
+| `NASA_API_KEY` | Optional. `DEMO_KEY` works at 30 requests/hour. Image downloads hit `apod.nasa.gov` directly and never count against the limit — only metadata calls do. |
+
+`ANTHROPIC_API_KEY` is read implicitly by the Anthropic SDK, so you will not
+find it referenced in the source.
 
 ## Tests
 
