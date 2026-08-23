@@ -128,4 +128,4 @@ End-to-end pipeline tests against a real APOD JPEG run automatically when
   design intent behind the frontend, kept because the reasoning still explains
   why the UI looks the way it does.
 
-The Phoenix/LiveView frontend lives in a separate repository.
+The Phoenix/LiveView frontend lives in [`web/`](../web/).

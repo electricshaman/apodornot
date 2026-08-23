@@ -1,0 +1,11 @@
+# --- repository-wide ---
+.DS_Store
+*.zip
+.env
+.claude/
+.beads/
+
+# --- excluded from the public repository ---
+fly.toml
+**/fly.toml
+

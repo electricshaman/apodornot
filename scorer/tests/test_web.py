@@ -179,9 +179,16 @@ def test_reference_endpoint_returns_entries(client, tmp_path):
 
 @pytest.mark.skipif(not APOD_FIXTURE.exists(), reason="APOD fixture not downloaded")
 def test_reference_endpoint_returns_real_entries(client):
-    r = client.get("/reference", params={"target_type": "rosette"})
+    """Query the whole archive rather than one target type.
+
+    Which categories exist depends on which APOD images happen to have been
+    fetched, so asking for a specific one made this pass or fail on the
+    contents of apod_archive rather than on the endpoint's behaviour.
+    """
+    r = client.get("/reference", params={"target_type": "global"})
     assert r.status_code == 200
     payload = r.json()
-    assert payload["target_type"] == "rosette"
+    assert payload["target_type"] == "global"
     assert payload["n"] > 0
+    assert payload["n"] == len(payload["entries"])
     assert all("title" in e and "date" in e for e in payload["entries"])
