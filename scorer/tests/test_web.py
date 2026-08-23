@@ -52,14 +52,31 @@ def _parse_sse(stream_text: str) -> list[tuple[str, dict]]:
     return events
 
 
-def test_evaluate_missing_file_returns_404(client):
-    r = client.get("/evaluate", params={"image_path": "/no/such/path.jpg"})
-    assert r.status_code == 404
+def test_evaluate_without_an_image_is_rejected(client):
+    """/evaluate takes a multipart upload; omitting it is a validation error."""
+    assert client.post("/evaluate").status_code == 422
+
+
+def test_evaluate_reports_unreadable_image_as_a_stream_error(client):
+    """An undecodable upload fails inside the SSE stream, not via the status code.
+
+    The stream has already begun by the time the pipeline touches the bytes, so
+    the failure is reported as ``event: error`` followed by ``event: done``.
+    """
+    r = client.post(
+        "/evaluate", files={"image": ("x.jpg", b"not-an-image", "image/jpeg")}
+    )
+    assert r.status_code == 200
+    types = [t for t, _ in _parse_sse(r.text)]
+    assert "error" in types
+    assert types[-1] == "done"
 
 
 @pytest.mark.skipif(not APOD_FIXTURE.exists(), reason="APOD fixture not downloaded")
 def test_evaluate_streams_stage_events_then_scorecard(client):
-    with client.stream("GET", "/evaluate", params={"image_path": str(APOD_FIXTURE)}) as r:
+    with client.stream(
+        "POST", "/evaluate", files={"image": ("apod.jpg", APOD_FIXTURE.read_bytes(), "image/jpeg")}
+    ) as r:
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("text/event-stream")
         body = "".join(chunk for chunk in r.iter_text())

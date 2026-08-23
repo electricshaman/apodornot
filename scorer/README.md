@@ -22,6 +22,15 @@ to handle the natural-language conversation around the results.
 > The pipeline detects linear/master inputs at evaluation time and emits a domain-mismatch
 > warning on the scorecard, but the underlying reference set hasn't changed.
 
+## Screenshots
+
+<!-- Drop images into docs/screenshots/ and uncomment. See docs/screenshots/README.md for how to capture them. -->
+<!--
+| Scorecard | Stage detail |
+|---|---|
+| ![Scorecard — radar plot with per-axis scores and findings](docs/screenshots/scorecard.png) | ![Stage detail — measured metrics against the APOD reference distribution](docs/screenshots/stage-detail.png) |
+-->
+
 ## Pipeline
 
 | Stage | Module | Purpose |
@@ -108,12 +117,15 @@ pytest tests/test_apod_client.py    # one stage
 End-to-end pipeline tests against a real APOD JPEG run automatically when
 `apod_archive/2024/2024-01-15.jpg` is present (downloaded via `apodornot fetch`).
 
-## Project tracking
+## Design docs
 
-Issues are tracked locally with `bd` (beads):
+- [`docs/design.md`](docs/design.md) — the full project spec: what each stage
+  measures, why, and the reference-set caveats.
+- [`docs/integration-sketch.md`](docs/integration-sketch.md) — how the scorer,
+  the MCP server, and the web frontend fit together.
+- [`docs/ui-design-prompt.md`](docs/ui-design-prompt.md) and
+  [`docs/ui-liveview-port-prompt.md`](docs/ui-liveview-port-prompt.md) — the
+  design intent behind the frontend, kept because the reasoning still explains
+  why the UI looks the way it does.
 
-```bash
-bd ready          # next available work
-bd show <id>      # issue details
-bd list           # everything
-```
+The Phoenix/LiveView frontend lives in a separate repository.
