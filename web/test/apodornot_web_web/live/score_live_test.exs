@@ -10,7 +10,7 @@ defmodule ApodornotWebWeb.ScoreLiveTest do
   test "score page renders the loading view first", %{conn: conn} do
     {:ok, view, html} = live(conn, ~p"/s/test-sub-1?image=test.jpg")
     assert html =~ "pipeline"
-    assert html =~ "A1 → A6"
+    assert html =~ "A1 → A7"
     refute html =~ "Findings"
   end
 
