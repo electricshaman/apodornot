@@ -69,3 +69,14 @@ output/
 
 # Claude Code runtime artifacts
 .claude/scheduled_tasks.lock
+
+# --- Excluded from the public repository ---
+# Private issue tracker, agent config, and deploy/infra config.
+/.beads/
+/.claude/
+.claude/
+fly.toml
+**/fly.toml
+*.zip
+.DS_Store
+erl_crash.dump
