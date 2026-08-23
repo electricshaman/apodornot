@@ -13,7 +13,7 @@ config :apodornot_web, ApodornotWebWeb.Endpoint,
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: "REDACTED-ROTATED-DEV-SECRET",
+  secret_key_base: "FDWJCAPXuj1cbRVb3/dOxptjJvMTse4uooSJflN7pV1PFxZ+eCkb9ivrYGnhmgu5",
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:apodornot_web, ~w(--sourcemap=inline --watch)]},
     tailwind: {Tailwind, :install_and_run, [:apodornot_web, ~w(--watch)]}

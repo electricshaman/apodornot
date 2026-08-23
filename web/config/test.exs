@@ -4,7 +4,7 @@ import Config
 # you can enable the server option below.
 config :apodornot_web, ApodornotWebWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
-  secret_key_base: "REDACTED-ROTATED-TEST-SECRET",
+  secret_key_base: "sgwtg7NrCujKRHYDPQIV2/yqRTbtanN2B9xyVkBNuxQfNeYqLctdr+7mmKbFWmjI",
   server: false
 
 # Print only warnings and errors during test
