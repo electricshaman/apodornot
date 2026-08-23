@@ -1,6 +1,6 @@
 # apodornot-web
 
-**The web frontend for [apodornot](https://github.com/jeffsmith/apodornot) — upload an astrophoto, watch it get measured, read the scorecard.**
+**The web frontend for [apodornot](https://github.com/electricshaman/apodornot) — upload an astrophoto, watch it get measured, read the scorecard.**
 
 A Phoenix/LiveView app in front of the apodornot measurement pipeline. You upload an image; the Python service streams stage-by-stage progress back over SSE; the page fills in as each stage completes and ends on a diagnostic scorecard.
 
@@ -38,7 +38,7 @@ is pushed straight to the browser over the LiveView socket.
 ## Requirements
 
 - Erlang 28 and Elixir 1.19 (pinned in `mise.toml` — run `mise install`)
-- A running [apodornot](https://github.com/jeffsmith/apodornot) pipeline service
+- A running [apodornot](https://github.com/electricshaman/apodornot) pipeline service
 - Redis, for submission state (`docker compose up -d`)
 
 ## Run it
