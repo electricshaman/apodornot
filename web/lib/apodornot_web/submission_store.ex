@@ -57,11 +57,30 @@ defmodule ApodornotWeb.SubmissionStore do
 
   def start_link do
     url = Application.fetch_env!(:apodornot_web, :redis_url)
-    # ``:inet6`` is required on Fly because Upstash Redis hostnames only
-    # resolve via flycast IPv6 from inside the private network — without
-    # this, gen_tcp defaults to IPv4 and gets ``:nxdomain``, surfacing as
-    # ``%Redix.ConnectionError{reason: :closed}`` on every command.
-    Redix.start_link(url, name: @conn_name, socket_opts: [:inet6])
+    Redix.start_link(url, name: @conn_name, socket_opts: socket_opts(url))
+  end
+
+  # ``:inet6`` is required on Fly, where Upstash Redis hostnames resolve only
+  # via flycast IPv6 from inside the private network; without it gen_tcp
+  # defaults to IPv4, gets ``:nxdomain``, and every command fails with
+  # ``%Redix.ConnectionError{reason: :closed}``.
+  #
+  # Forcing it unconditionally produces that same error in reverse for local
+  # development, where Redis is published on 127.0.0.1 and nothing listens on
+  # ``::1``. Decide from the host: loopback literals are IPv4, anything else
+  # is assumed to be the deployed environment. ``REDIS_IPV6`` overrides.
+  defp socket_opts(url) do
+    case System.get_env("REDIS_IPV6") do
+      "true" -> [:inet6]
+      "false" -> []
+      _ -> if local_host?(URI.parse(url).host), do: [], else: [:inet6]
+    end
+  end
+
+  defp local_host?(nil), do: true
+  defp local_host?(host) do
+    host in ["localhost", "127.0.0.1", "::1", "0.0.0.0"] or
+      String.starts_with?(host, "127.")
   end
 
   # ---- public API --------------------------------------------------------- #

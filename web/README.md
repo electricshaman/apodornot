@@ -8,12 +8,7 @@ The evaluation itself happens in the Python pipeline. This repository is purely 
 
 ## Screenshots
 
-<!-- Drop images into docs/screenshots/ and uncomment. See docs/screenshots/README.md for how to capture them. -->
-<!--
-| Upload | Scorecard |
-|---|---|
-| ![Upload — drop an image and watch each measurement stage report in](docs/screenshots/upload.png) | ![Scorecard — radar plot, axis cards, and findings](docs/screenshots/scorecard.png) |
--->
+See the [root README](../README.md#screenshots).
 
 ## How it fits together
 

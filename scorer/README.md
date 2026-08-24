@@ -24,12 +24,7 @@ to handle the natural-language conversation around the results.
 
 ## Screenshots
 
-<!-- Drop images into docs/screenshots/ and uncomment. See docs/screenshots/README.md for how to capture them. -->
-<!--
-| Scorecard | Stage detail |
-|---|---|
-| ![Scorecard — radar plot with per-axis scores and findings](docs/screenshots/scorecard.png) | ![Stage detail — measured metrics against the APOD reference distribution](docs/screenshots/stage-detail.png) |
--->
+See the [root README](../README.md#screenshots).
 
 ## Pipeline
 

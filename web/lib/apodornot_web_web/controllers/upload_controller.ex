@@ -24,7 +24,7 @@ defmodule ApodornotWebWeb.UploadController do
         conn |> put_status(:bad_request) |> text("invalid submission id")
 
       (path = local_path(submission_id)) != nil ->
-        send_file(conn, 200, path)
+        send_local(conn, path)
 
       true ->
         proxy_from_pipeline(conn, submission_id)
@@ -61,9 +61,21 @@ defmodule ApodornotWebWeb.UploadController do
           conn |> put_status(:bad_request) |> text("invalid path")
 
         true ->
-          send_file(conn, 200, path)
+          send_local(conn, path)
       end
     end
+  end
+
+  # send_file/3 does not set a content type. Without one the browser will not
+  # render the image in an <img> tag — it only worked in production because
+  # Phoenix and the pipeline run on separate hosts there, so the proxy path
+  # below (which does copy the upstream header) was the one being exercised.
+  defp send_local(conn, path) do
+    conn
+    # nil charset: a charset parameter is meaningless on a binary image type.
+    |> put_resp_content_type(MIME.from_path(path), nil)
+    |> put_resp_header("cache-control", "public, max-age=300")
+    |> send_file(200, path)
   end
 
   defp local_path(submission_id) do

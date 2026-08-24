@@ -18,12 +18,33 @@ model can talk *about* the results without being trusted to produce them.
 
 ## Screenshots
 
-<!-- Drop images into web/docs/screenshots/ and uncomment. -->
-<!--
-| Upload | Scorecard |
-|---|---|
-| ![Upload — each measurement stage reports in as it completes](web/docs/screenshots/upload.png) | ![Scorecard — radar plot, axis cards, and findings](web/docs/screenshots/scorecard.png) |
--->
+**Upload.** Drop a finished export. Target type can be set explicitly or
+inferred, and the optional context box takes free-text notes about equipment,
+integration, and processing.
+
+![Upload page with LDN1622-RGBHa.jpg staged and ready to evaluate](docs/screenshots/upload.png)
+
+**Scorecard.** One overall number, then the five axes it decomposes into, each
+with its component metrics and the percentile that metric lands at against the
+APOD reference set. This image scores 50: star roundness is at the 99th
+percentile, colour calibration at the 23rd.
+
+![Scorecard for LDN 1622 scoring 50, with five axis cards and a radar plot](docs/screenshots/scorecard.jpg)
+
+**Axis detail.** Every axis opens into its own diagnostic. Star quality plots
+the eccentricity vector field — one tick per fitted star, length for
+eccentricity and orientation for position angle — because the *pattern* is the
+diagnosis: uniform direction means tracking error, radial means optical
+aberration, random means seeing.
+
+![Star quality drawer showing an eccentricity vector field over 196 fitted stars](docs/screenshots/axis-detail.jpg)
+
+**Chat.** Optional, and deliberately downstream of the measurement. The model
+gets the finished scorecard and a lookup tool over the metric knowledge base —
+it never sees the image. It cites the numbers it is reasoning from, so the
+advice is checkable against the scorecard rather than taken on trust.
+
+![Chat panel giving a prioritised editing TODO, each item citing the metric and percentile behind it](docs/screenshots/chat.jpg)
 
 ## Layout
 
